@@ -122,152 +122,184 @@
 <script>
 const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const CHAR_UUID    = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
-
 let characteristic = null;
-let imgPixels = null;
+let drawColor = '#ffffff';
+let brushSize = 3;
+let drawing = false;
+let lastX = 0, lastY = 0;
 
-function log(msg){
-  const el=document.getElementById('log');
-  el.innerHTML+=`<div>> ${msg}</div>`;
-  el.scrollTop=el.scrollHeight;
-}
+// ── LOG ──────────────────────────────────────────────
+function log(msg){ const el=document.getElementById('log'); el.innerHTML+=`<div>> ${msg}</div>`; el.scrollTop=el.scrollHeight; }
 
-// ── CONNECT ──
+// ── CONNECTION ───────────────────────────────────────
 function setConnected(val){
-  document.querySelectorAll('#sendBtn,#clearBtn,#drawSendBtn,#imgSendBtn,.shapeBtn')
-    .forEach(b=>b.disabled=!val);
-
-  if(val && imgPixels){
-    document.getElementById('imgSendBtn').disabled=false;
-  }
+  document.getElementById('status').textContent = val ? '● Connected to VR-Display' : '● Not connected';
+  document.getElementById('status').className = 'status '+(val?'connected':'disconnected');
+  document.getElementById('connectBtn').textContent = val ? 'Disconnect' : 'Connect via Bluetooth';
+  const btns = document.querySelectorAll('#sendBtn,#clearBtn,#drawSendBtn,#imgSendBtn,.shapeBtn');
+  btns.forEach(b=>b.disabled=!val);
 }
 
 async function connect(){
-  if(characteristic){
-    characteristic=null;
-    setConnected(false);
-    return;
-  }
-
-  const device = await navigator.bluetooth.requestDevice({
-    acceptAllDevices:true,
-    optionalServices:[SERVICE_UUID]
-  });
-
-  const server  = await device.gatt.connect();
-  const service = await server.getPrimaryService(SERVICE_UUID);
-  characteristic = await service.getCharacteristic(CHAR_UUID);
-
-  setConnected(true);
-
-  device.addEventListener('gattserverdisconnected',()=>{
-    characteristic=null;
-    setConnected(false);
-  });
+  if(characteristic){ characteristic=null; setConnected(false); log('Disconnected'); return; }
+  try {
+    log('Scanning...');
+    const device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [SERVICE_UUID]
+    });
+    log('Connecting...');
+    const server  = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    characteristic = await service.getCharacteristic(CHAR_UUID);
+    setConnected(true);
+    log('Connected! Ready to send.');
+    device.addEventListener('gattserverdisconnected',()=>{ characteristic=null; setConnected(false); log('Disconnected'); });
+  } catch(e){ log('Error: '+e.message); }
 }
 
-// ── SEND CMD ──
+// ── SEND COMMAND ─────────────────────────────────────
 async function sendCmd(cmd){
   if(!characteristic)return;
-  await characteristic.writeValue(new TextEncoder().encode(cmd+'\n'));
+  try{
+    await characteristic.writeValue(new TextEncoder().encode(cmd+'\n'));
+    log('Sent: '+cmd);
+  }catch(e){ log('Error: '+e.message); }
 }
 
-// ── CHUNKED SENDER ──
-async function sendRow(y, pixels){
-  const CHUNK = 8;
-
-  for(let start=0; start<240; start+=CHUNK){
-
-    const count = Math.min(CHUNK,240-start);
-    const row = new Uint8Array(6 + count*2);
-
-    row[0]=73;row[1]=77;row[2]=71;row[3]=58;
-    row[4]=(y>>8)&0xFF;
-    row[5]=y&0xFF;
-
-    for(let i=0;i<count;i++){
-      const x=start+i;
-      const idx=(y*240+x)*4;
-
-      const r=pixels.data[idx];
-      const g=pixels.data[idx+1];
-      const b=pixels.data[idx+2];
-
-      const rgb565=((r&0xF8)<<8)|((g&0xFC)<<3)|(b>>3);
-
-      row[6+i*2]=(rgb565>>8)&0xFF;
-      row[6+i*2+1]=rgb565&0xFF;
-    }
-
-    await characteristic.writeValueWithoutResponse(row.buffer);
-  }
+function sendText(){
+  const msg=document.getElementById('msgInput').value.trim();
+  if(msg) sendCmd('TEXT:'+msg);
 }
 
-// ── DRAW SEND ──
+document.getElementById('msgInput').addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendText();}
+});
+
+// ── DRAW CANVAS ──────────────────────────────────────
+const canvas = document.getElementById('drawCanvas');
+const ctx = canvas.getContext('2d');
+ctx.fillStyle='#000'; ctx.fillRect(0,0,240,240);
+
+// Clip to circle
+ctx.save();
+ctx.beginPath(); ctx.arc(120,120,120,0,Math.PI*2); ctx.clip();
+
+function setColor(col,btn){
+  drawColor=col;
+  document.querySelectorAll('.color-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+document.getElementById('brushSize').addEventListener('input',function(){
+  brushSize=parseInt(this.value);
+  document.getElementById('brushLabel').textContent=brushSize+'px';
+});
+
+function getPos(e){
+  const r=canvas.getBoundingClientRect();
+  const touch=e.touches?e.touches[0]:e;
+  return{ x:(touch.clientX-r.left)*(240/r.width), y:(touch.clientY-r.top)*(240/r.height) };
+}
+
+canvas.addEventListener('mousedown',e=>{ drawing=true; const p=getPos(e); lastX=p.x; lastY=p.y; });
+canvas.addEventListener('mousemove',e=>{
+  if(!drawing)return;
+  const p=getPos(e);
+  ctx.strokeStyle=drawColor; ctx.lineWidth=brushSize; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(p.x,p.y); ctx.stroke();
+  lastX=p.x; lastY=p.y;
+});
+canvas.addEventListener('mouseup',()=>drawing=false);
+canvas.addEventListener('mouseleave',()=>drawing=false);
+canvas.addEventListener('touchstart',e=>{ e.preventDefault(); drawing=true; const p=getPos(e); lastX=p.x; lastY=p.y; },{passive:false});
+canvas.addEventListener('touchmove',e=>{ e.preventDefault(); if(!drawing)return; const p=getPos(e); ctx.strokeStyle=drawColor;ctx.lineWidth=brushSize;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(lastX,lastY);ctx.lineTo(p.x,p.y);ctx.stroke();lastX=p.x;lastY=p.y; },{passive:false});
+canvas.addEventListener('touchend',()=>drawing=false);
+
+function clearCanvas(){
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,240,240);
+  sendCmd('DRAWCLEAR');
+}
+
+// Send drawing row by row as binary
 async function sendDrawing(){
-  const ctx=document.getElementById('drawCanvas').getContext('2d');
-  const data=ctx.getImageData(0,0,240,240);
-
+  if(!characteristic)return;
+  log('Sending drawing...');
   await sendCmd('IMGSTART');
   await sleep(200);
-
+  const imgData=ctx.getImageData(0,0,240,240);
   for(let y=0;y<240;y++){
-    await sendRow(y,data);
+    const row=new Uint8Array(6+240*2);
+    row[0]=73;row[1]=77;row[2]=71;row[3]=58; // IMG:
+    row[4]=(y>>8)&0xFF; row[5]=y&0xFF;
+    for(let x=0;x<240;x++){
+      const i=(y*240+x)*4;
+      const r=imgData.data[i],g=imgData.data[i+1],b=imgData.data[i+2];
+      const rgb565=((r&0xF8)<<8)|((g&0xFC)<<3)|(b>>3);
+      row[6+x*2]=(rgb565>>8)&0xFF;
+      row[6+x*2+1]=rgb565&0xFF;
+    }
+    try{ await characteristic.writeValueWithoutResponse(row); }
+    catch(e){ await sleep(10); try{ await characteristic.writeValueWithoutResponse(row); }catch(e2){} }
+    if(y%20===0){ log('Drawing: '+(y/240*100|0)+'%'); await sleep(20); }
   }
-
-  log('Drawing sent');
+  log('Drawing sent!');
 }
 
-// ── IMAGE LOAD ──
-function loadImage(e){
-  const file=e.target.files[0];
-  if(!file)return;
+// ── IMAGE ────────────────────────────────────────────
+let imgPixels = null;
 
+function loadImage(e){
+  const file=e.target.files[0]; if(!file)return;
   const reader=new FileReader();
   reader.onload=ev=>{
     const img=new Image();
-
     img.onload=()=>{
       const c=document.getElementById('imgCanvas');
       const cx=c.getContext('2d');
-
+      // Crop to square then draw at 240x240
       const size=Math.min(img.width,img.height);
-      const sx=(img.width-size)/2;
-      const sy=(img.height-size)/2;
-
+      const sx=(img.width-size)/2, sy=(img.height-size)/2;
       cx.drawImage(img,sx,sy,size,size,0,0,240,240);
-
-      imgPixels = cx.getImageData(0,0,240,240);
-
+      imgPixels=cx.getImageData(0,0,240,240);
       c.style.display='block';
       document.getElementById('imgSendBtn').style.display='block';
-
-      if(characteristic){
-        document.getElementById('imgSendBtn').disabled=false;
-      }
+      if(characteristic) document.getElementById('imgSendBtn').disabled=false;
+      log('Image loaded — ready to send');
     };
-
     img.src=ev.target.result;
   };
-
   reader.readAsDataURL(file);
 }
 
-// ── IMAGE SEND ──
 async function sendImage(){
   if(!characteristic||!imgPixels)return;
-
+  log('Sending image...');
   await sendCmd('IMGSTART');
-  await sleep(200);
-
+  await sleep(300);
+  const prog=document.getElementById('imgProgress');
+  prog.style.display='block'; prog.value=0;
   for(let y=0;y<240;y++){
-    await sendRow(y,imgPixels);
+    const row=new Uint8Array(6+240*2);
+    row[0]=73;row[1]=77;row[2]=71;row[3]=58;
+    row[4]=(y>>8)&0xFF; row[5]=y&0xFF;
+    for(let x=0;x<240;x++){
+      const i=(y*240+x)*4;
+      const r=imgPixels.data[i],g=imgPixels.data[i+1],b=imgPixels.data[i+2];
+      const rgb565=((r&0xF8)<<8)|((g&0xFC)<<3)|(b>>3);
+      row[6+x*2]=(rgb565>>8)&0xFF;
+      row[6+x*2+1]=rgb565&0xFF;
+    }
+    try{ await characteristic.writeValueWithoutResponse(row); }
+    catch(e){ await sleep(10); try{ await characteristic.writeValueWithoutResponse(row); }catch(e2){} }
+    prog.value=(y/240*100)|0;
+    if(y%20===0) await sleep(20);
   }
-
-  log('Image sent');
+  prog.value=100;
+  log('Image sent!');
 }
 
-function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 </script>
 </body>
 </html>
