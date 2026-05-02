@@ -184,9 +184,9 @@
     try {
       log('Scanning for VR-Display...');
       const device = await navigator.bluetooth.requestDevice({
-        filters: [{ name: 'VR-Display' }],
-        optionalServices: [SERVICE_UUID]
-      });
+  acceptAllDevices: true,
+  optionalServices: [SERVICE_UUID]
+});
       log('Found device, connecting...');
       const server  = await device.gatt.connect();
       const service = await server.getPrimaryService(SERVICE_UUID);
