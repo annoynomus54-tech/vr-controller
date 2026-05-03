@@ -262,10 +262,10 @@ function loadImage(e){
       const sx=(img.width-size)/2, sy=(img.height-size)/2;
       cx.drawImage(img,sx,sy,size,size,0,0,240,240);
       imgPixels=cx.getImageData(0,0,240,240);
-      c.style.display='block';
-      document.getElementById('imgSendBtn').style.display='block';
-      if(characteristic) document.getElementById('imgSendBtn').disabled=false;
-      log('Image loaded — ready to send');
+      c.style.display = 'block';
+document.getElementById('imgSendBtn').style.display = 'block';
+document.getElementById('imgSendBtn').disabled = false; // always enable
+log('Image loaded — ready to send');
     };
     img.src=ev.target.result;
   };
