@@ -32,8 +32,7 @@
   .color-btn{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:transform .2s}
   .color-btn.active{border-color:#fff;transform:scale(1.2)}
   input[type=range]{flex:1;accent-color:#00ffff}
-  /* Image card */
-  .drop-zone{border:2px dashed #333;border-radius:12px;padding:30px 20px;text-align:center;color:#555;cursor:pointer;transition:all .2s;position:relative}
+  .drop-zone{border:2px dashed #333;border-radius:12px;padding:30px 20px;text-align:center;color:#555;cursor:pointer;transition:all .2s}
   .drop-zone.dragover{border-color:#00ffff;color:#00ffff;background:#001a1a}
   .drop-zone input{display:none}
   .drop-zone p{margin:4px 0;font-size:.9rem}
@@ -42,10 +41,25 @@
   .url-row input{flex:1;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#fff;padding:9px 12px;font-size:.9rem}
   .url-row input:focus{outline:none;border-color:#00ffff}
   .url-row input::placeholder{color:#444}
-  .url-row button{padding:9px 14px;font-size:.85rem;white-space:nowrap}
   #imgPreview{display:none;border-radius:50%;margin-top:12px;width:120px;height:120px;border:2px solid #333}
   progress{width:100%;height:8px;border-radius:4px;margin-top:10px;accent-color:#00ffff;display:none}
   #imgSendBtn{display:none;margin-top:10px}
+  /* Thumbnails */
+  .thumb-grid{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+  .thumb-wrap{position:relative;width:72px;height:72px;flex-shrink:0}
+  .thumb-wrap img{width:72px;height:72px;border-radius:50%;object-fit:cover;border:2px solid #333;cursor:pointer;transition:border-color .2s}
+  .thumb-wrap img:hover{border-color:#00ffff}
+  .thumb-wrap img.active-thumb{border-color:#00ff88;border-width:3px}
+  .thumb-del{position:absolute;top:-4px;right:-4px;width:20px;height:20px;border-radius:50%;background:#ff4444;color:#fff;border:none;font-size:12px;line-height:20px;text-align:center;cursor:pointer;padding:0;display:none}
+  .thumb-wrap:hover .thumb-del{display:block}
+  .empty-hint{color:#444;font-size:.85rem;padding:10px 0}
+  /* Slideshow */
+  .slide-controls{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+  .slide-controls select{background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#fff;padding:8px 10px;font-size:.85rem}
+  #slideBtn{background:#333;color:#fff;border:1px solid #555;padding:8px 16px;font-size:.85rem}
+  #slideBtn.running{background:#ff4444;color:#fff;border-color:#ff4444}
+  .save-btn{background:#333;color:#00ffff;border:1px solid #00ffff;padding:8px 16px;font-size:.85rem;border-radius:8px;cursor:pointer;margin-top:8px;width:100%}
+  .save-btn:hover{background:#001a1a}
 </style>
 </head>
 <body>
@@ -106,11 +120,8 @@
   </div>
 </div>
 
-<!-- IMAGE CARD — updated -->
 <div class="card">
   <h2>🖼 Send Image</h2>
-
-  <!-- Drop zone — accepts file picker, drag from finder, drag from browser -->
   <div class="drop-zone" id="dropZone"
        onclick="document.getElementById('imgFile').click()"
        ondragover="dragOver(event)"
@@ -119,18 +130,43 @@
     <input type="file" id="imgFile" accept="image/*" onchange="loadFromFile(event)">
     <p>📂 Click to choose</p>
     <p>🖱 Or drag any image here</p>
-    <p class="hint">From Finder, browser, anywhere</p>
+    <p class="hint">From Finder, browser, or paste with Cmd+V</p>
   </div>
-
-  <!-- URL fetch -->
   <div class="url-row">
     <input type="text" id="imgUrl" placeholder="Or paste an image URL...">
-    <button onclick="loadFromUrl()" style="background:#333;color:#fff;border:1px solid #555">Fetch</button>
+    <button onclick="loadFromUrl()" style="background:#333;color:#fff;border:1px solid #555;flex-shrink:0">Fetch</button>
   </div>
-
   <img id="imgPreview">
   <progress id="imgProgress" value="0" max="100"></progress>
-  <button id="imgSendBtn" onclick="sendImage()" disabled>📤 Send to Screen</button>
+  <button id="imgSendBtn" onclick="sendCurrentImage()" disabled>📤 Send to Screen</button>
+  <button class="save-btn" id="saveLibBtn" onclick="saveToLibrary()" style="display:none">💾 Save to Library</button>
+</div>
+
+<!-- HISTORY -->
+<div class="card">
+  <h2>🕓 Recent History <span style="color:#444;font-size:.8rem;font-weight:normal">(tap to resend, hover to delete)</span></h2>
+  <div class="thumb-grid" id="historyGrid">
+    <p class="empty-hint">No history yet</p>
+  </div>
+</div>
+
+<!-- LIBRARY + SLIDESHOW -->
+<div class="card">
+  <h2>📚 Library <span style="color:#444;font-size:.8rem;font-weight:normal">(hover to delete)</span></h2>
+  <div class="thumb-grid" id="libraryGrid">
+    <p class="empty-hint">Save images to build your library</p>
+  </div>
+  <div class="slide-controls">
+    <span style="color:#aaa;font-size:.85rem">Interval:</span>
+    <select id="slideInterval">
+      <option value="5000">5 sec</option>
+      <option value="10000" selected>10 sec</option>
+      <option value="30000">30 sec</option>
+      <option value="60000">1 min</option>
+    </select>
+    <button id="slideBtn" onclick="toggleSlideshow()" disabled>▶ Slideshow</button>
+    <button class="btn-secondary" onclick="shuffleLibrary()" id="shuffleBtn" disabled style="padding:8px 12px;font-size:.85rem">🔀</button>
+  </div>
 </div>
 
 <div class="log" id="log">Waiting for connection...</div>
@@ -144,9 +180,22 @@ let brushSize=3;
 let drawing=false;
 let lastX=0,lastY=0;
 let canvasReady=false;
-let imgPixels=null;
+let imgPixels=null;        // current ImageData
+let imgCached=null;        // current pre-built row cache (array of Uint8Array)
 let sendQueue=[];
 let sending=false;
+let slideshowTimer=null;
+let slideshowIndex=0;
+
+// ── Storage helpers ───────────────────────────────────
+// History: array of {thumb, rows} — rows is array of base64 strings
+// Library: same structure
+
+function loadStore(key){ try{return JSON.parse(localStorage.getItem(key)||'[]');}catch{return[];} }
+function saveStore(key,val){ try{localStorage.setItem(key,JSON.stringify(val));}catch(e){log('Storage full — delete some images');} }
+
+let history = loadStore('vr_history');
+let library  = loadStore('vr_library');
 
 function log(msg){const el=document.getElementById('log');el.innerHTML+=`<div>> ${msg}</div>`;el.scrollTop=el.scrollHeight;}
 
@@ -156,10 +205,17 @@ function setConnected(val){
   document.getElementById('connectBtn').textContent=val?'Disconnect':'Connect via Bluetooth';
   document.querySelectorAll('#sendBtn,#clearBtn,#clearDrawBtn,.shapeBtn').forEach(b=>b.disabled=!val);
   if(val&&imgPixels)document.getElementById('imgSendBtn').disabled=false;
+  if(val&&library.length>0){
+    document.getElementById('slideBtn').disabled=false;
+    document.getElementById('shuffleBtn').disabled=false;
+  }
 }
 
 async function connect(){
-  if(characteristic){characteristic=null;setConnected(false);canvasReady=false;log('Disconnected');return;}
+  if(characteristic){
+    characteristic=null;setConnected(false);canvasReady=false;
+    stopSlideshow();log('Disconnected');return;
+  }
   try{
     log('Scanning for VR device...');
     const device=await navigator.bluetooth.requestDevice({
@@ -170,11 +226,11 @@ async function connect(){
     const server=await device.gatt.connect();
     const service=await server.getPrimaryService(SERVICE_UUID);
     characteristic=await service.getCharacteristic(CHAR_UUID);
-    setConnected(true);
-    canvasReady=false;
+    setConnected(true);canvasReady=false;
     log('Connected!');
     device.addEventListener('gattserverdisconnected',()=>{
-      characteristic=null;canvasReady=false;setConnected(false);log('Disconnected');
+      characteristic=null;canvasReady=false;
+      setConnected(false);stopSlideshow();log('Disconnected');
     });
   }catch(e){log('Error: '+e.message);}
 }
@@ -193,16 +249,12 @@ async function processQueue(){
         await characteristic.writeValue(new TextEncoder().encode(item+'\n'));
     }catch(e){
       await sleep(15);
-      try{
-        if(item instanceof Uint8Array)
-          await characteristic.writeValueWithoutResponse(item);
-      }catch(e2){}
+      try{if(item instanceof Uint8Array)await characteristic.writeValueWithoutResponse(item);}catch(e2){}
     }
     await sleep(6);
   }
   sending=false;
 }
-
 function queue(item){sendQueue.push(item);processQueue();}
 
 async function sendCmd(cmd){
@@ -236,18 +288,12 @@ document.getElementById('brushSize').addEventListener('input',function(){
   brushSize=parseInt(this.value);
   document.getElementById('brushLabel').textContent=brushSize+'px';
 });
-
 function getPos(e){
   const r=canvas.getBoundingClientRect();
   const t=e.touches?e.touches[0]:e;
-  return{
-    x:Math.round((t.clientX-r.left)*(240/r.width)),
-    y:Math.round((t.clientY-r.top)*(240/r.height))
-  };
+  return{x:Math.round((t.clientX-r.left)*(240/r.width)),y:Math.round((t.clientY-r.top)*(240/r.height))};
 }
-function hexToRgb(hex){
-  return{r:parseInt(hex.slice(1,3),16),g:parseInt(hex.slice(3,5),16),b:parseInt(hex.slice(5,7),16)};
-}
+function hexToRgb(hex){return{r:parseInt(hex.slice(1,3),16),g:parseInt(hex.slice(3,5),16),b:parseInt(hex.slice(5,7),16)};}
 function makeDRW(x1,y1,x2,y2,r,g,b,size){
   const buf=new Uint8Array(15);
   buf[0]=68;buf[1]=82;buf[2]=87;
@@ -258,7 +304,6 @@ function makeDRW(x1,y1,x2,y2,r,g,b,size){
   buf[11]=r;buf[12]=g;buf[13]=b;buf[14]=size;
   return buf;
 }
-
 async function startDraw(e){
   drawing=true;
   const p=getPos(e);lastX=p.x;lastY=p.y;
@@ -286,18 +331,49 @@ canvas.addEventListener('mouseleave',()=>drawing=false);
 canvas.addEventListener('touchstart',e=>{e.preventDefault();startDraw(e);},{passive:false});
 canvas.addEventListener('touchmove',e=>{e.preventDefault();doDrawMove(e);},{passive:false});
 canvas.addEventListener('touchend',()=>drawing=false);
-
 function clearDraw(){
   ctx.fillStyle='#000';ctx.fillRect(0,0,240,240);
   canvasReady=false;sendQueue=[];sending=false;
-  sendCmd('DRAWCLEAR');
-  log('Canvas cleared');
+  sendCmd('DRAWCLEAR');log('Canvas cleared');
 }
 
-// ── Image loading — 3 ways ────────────────────────────
+// ── Image processing ──────────────────────────────────
 const offscreen=document.createElement('canvas');
 offscreen.width=240;offscreen.height=240;
 const octx=offscreen.getContext('2d');
+
+// Build row cache from ImageData — array of Uint8Array ready to send
+function buildCache(pixels){
+  const rows=[];
+  for(let y=0;y<=239;y++){
+    const row=new Uint8Array(6+240*2);
+    row[0]=73;row[1]=77;row[2]=71;row[3]=58;
+    row[4]=(y>>8)&0xFF;row[5]=y&0xFF;
+    for(let x=0;x<240;x++){
+      const i=(y*240+x)*4;
+      const r=pixels.data[i],g=pixels.data[i+1],b=pixels.data[i+2];
+      const rgb=((r&0xF8)<<8)|((g&0xFC)<<3)|(b>>3);
+      row[6+x*2]=(rgb>>8)&0xFF;
+      row[6+x*2+1]=rgb&0xFF;
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+// Convert cache to storable base64 strings
+function cacheToStrings(rows){
+  return rows.map(r=>btoa(String.fromCharCode(...r)));
+}
+// Convert back
+function stringsToCache(strs){
+  return strs.map(s=>{
+    const bin=atob(s);
+    const arr=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+    return arr;
+  });
+}
 
 function processImage(img){
   const size=Math.min(img.width,img.height);
@@ -305,166 +381,259 @@ function processImage(img){
   octx.clearRect(0,0,240,240);
   octx.drawImage(img,sx,sy,size,size,0,0,240,240);
   imgPixels=octx.getImageData(0,0,240,240);
+  imgCached=buildCache(imgPixels);
   const prev=document.getElementById('imgPreview');
-  prev.src=offscreen.toDataURL();
+  prev.src=offscreen.toDataURL('image/jpeg',0.7);
   prev.style.display='block';
-  const btn=document.getElementById('imgSendBtn');
-  btn.style.display='block';
-  btn.disabled=!characteristic;
+  document.getElementById('imgSendBtn').style.display='block';
+  document.getElementById('imgSendBtn').disabled=!characteristic;
+  document.getElementById('saveLibBtn').style.display='block';
   log('Image ready — '+img.naturalWidth+'×'+img.naturalHeight);
 }
 
-// File picker
 function loadFromFile(e){
   const file=e.target.files[0];if(!file)return;
   const reader=new FileReader();
-  reader.onload=ev=>{
-    const img=new Image();
-    img.onload=()=>processImage(img);
-    img.src=ev.target.result;
-  };
+  reader.onload=ev=>{const img=new Image();img.onload=()=>processImage(img);img.src=ev.target.result;};
   reader.readAsDataURL(file);
 }
 
-// Drag and drop — from Finder OR from browser (dragging image from webpage)
-function dragOver(e){
-  e.preventDefault();
-  document.getElementById('dropZone').classList.add('dragover');
-}
-function dragLeave(e){
-  document.getElementById('dropZone').classList.remove('dragover');
-}
+function dragOver(e){e.preventDefault();document.getElementById('dropZone').classList.add('dragover');}
+function dragLeave(e){document.getElementById('dropZone').classList.remove('dragover');}
 function dropImage(e){
   e.preventDefault();
   document.getElementById('dropZone').classList.remove('dragover');
-
-  // Try file first (drag from Finder)
   const file=e.dataTransfer.files[0];
   if(file&&file.type.startsWith('image/')){
     log('Image dropped from Finder');
     const reader=new FileReader();
-    reader.onload=ev=>{
-      const img=new Image();
-      img.onload=()=>processImage(img);
-      img.src=ev.target.result;
-    };
-    reader.readAsDataURL(file);
-    return;
+    reader.onload=ev=>{const img=new Image();img.onload=()=>processImage(img);img.src=ev.target.result;};
+    reader.readAsDataURL(file);return;
   }
-
-  // Try URL (drag from browser — images dragged from webpages send a URL)
   const url=e.dataTransfer.getData('text/uri-list')||e.dataTransfer.getData('text/plain');
-  if(url&&(url.startsWith('http')||url.startsWith('data:'))){
-    log('Image dragged from browser, fetching...');
+  if(url&&url.startsWith('http')){
+    log('Dragged from browser, fetching...');
     document.getElementById('imgUrl').value=url;
-    loadFromUrl();
-    return;
+    loadFromUrl();return;
   }
-
-  log('Could not read dropped item — try a URL instead');
+  log('Could not read — try a URL instead');
 }
 
-// URL fetch with CORS proxy fallback
 async function loadFromUrl(){
   let url=document.getElementById('imgUrl').value.trim();
   if(!url){log('Paste a URL first');return;}
-
-  // If it's already a data URL just load it
-  if(url.startsWith('data:')){
-    const img=new Image();
-    img.onload=()=>processImage(img);
-    img.src=url;
-    return;
-  }
-
-  log('Fetching image...');
-
-  // Try direct first, fall back to CORS proxy
-  const urls=[
-    url,
-    'https://corsproxy.io/?'+encodeURIComponent(url),
-    'https://api.allorigins.win/raw?url='+encodeURIComponent(url)
-  ];
-
-  for(const attempt of urls){
+  if(url.startsWith('data:')){const img=new Image();img.onload=()=>processImage(img);img.src=url;return;}
+  log('Fetching...');
+  const proxies=[url,'https://corsproxy.io/?'+encodeURIComponent(url),'https://api.allorigins.win/raw?url='+encodeURIComponent(url)];
+  for(const attempt of proxies){
     try{
-      const res=await fetch(attempt);
-      if(!res.ok)continue;
-      const blob=await res.blob();
-      if(!blob.type.startsWith('image/')){log('URL is not an image');return;}
+      const res=await fetch(attempt);if(!res.ok)continue;
+      const blob=await res.blob();if(!blob.type.startsWith('image/'))continue;
       const reader=new FileReader();
-      reader.onload=ev=>{
-        const img=new Image();
-        img.onload=()=>{ processImage(img); log('Image loaded from URL!'); };
-        img.onerror=()=>log('Could not load image');
-        img.src=ev.target.result;
-      };
-      reader.readAsDataURL(blob);
-      return;
-    }catch(e){
-      // try next proxy
-    }
+      reader.onload=ev=>{const img=new Image();img.onload=()=>{processImage(img);log('Loaded from URL!');};img.src=ev.target.result;};
+      reader.readAsDataURL(blob);return;
+    }catch(e){}
   }
-  log('Could not fetch image — try dragging it directly instead');
+  log('Could not fetch — try dragging directly');
 }
 
-// Also allow pasting image from clipboard (Cmd+V)
 document.addEventListener('paste',e=>{
   const item=Array.from(e.clipboardData.items).find(i=>i.type.startsWith('image/'));
   if(item){
-    log('Image pasted from clipboard');
+    log('Image pasted');
     const blob=item.getAsFile();
     const reader=new FileReader();
-    reader.onload=ev=>{
-      const img=new Image();
-      img.onload=()=>processImage(img);
-      img.src=ev.target.result;
-    };
+    reader.onload=ev=>{const img=new Image();img.onload=()=>processImage(img);img.src=ev.target.result;};
     reader.readAsDataURL(blob);
   }
 });
 
-// ── Image send ────────────────────────────────────────
-function makeRow(y){
-  const row=new Uint8Array(6+240*2);
-  row[0]=73;row[1]=77;row[2]=71;row[3]=58;
-  row[4]=(y>>8)&0xFF;row[5]=y&0xFF;
-  for(let x=0;x<240;x++){
-    const i=(y*240+x)*4;
-    const r=imgPixels.data[i],g=imgPixels.data[i+1],b=imgPixels.data[i+2];
-    const rgb=((r&0xF8)<<8)|((g&0xFC)<<3)|(b>>3);
-    row[6+x*2]=(rgb>>8)&0xFF;
-    row[6+x*2+1]=rgb&0xFF;
-  }
-  return row;
-}
-async function sendRow(y){
-  const row=makeRow(y);
-  try{await characteristic.writeValueWithoutResponse(row);}
-  catch(e){await sleep(20);try{await characteristic.writeValueWithoutResponse(row);}catch(e2){}}
-  await sleep(8);
-}
-async function sendImage(){
-  if(!characteristic||!imgPixels)return;
-  document.getElementById('imgSendBtn').disabled=true;
+// ── Send image from cache ─────────────────────────────
+async function sendCachedRows(rows){
+  if(!characteristic||!rows)return;
   const prog=document.getElementById('imgProgress');
   prog.style.display='block';prog.value=0;
   await sendCmd('IMGSTART');
   await sleep(400);
-  log('Pass 1 — rough preview...');
-  for(let y=0;y<=239;y+=8){await sendRow(y);prog.value=(y/240*25)|0;}
-  log('Pass 2 — filling...');
-  for(let y=4;y<=239;y+=8){await sendRow(y);prog.value=25+((y/240*25)|0);}
-  log('Pass 3 — detail...');
-  for(let y=2;y<=239;y+=4){await sendRow(y);prog.value=50+((y/240*25)|0);}
-  log('Pass 4 — full res...');
-  for(let y=1;y<=239;y+=2){await sendRow(y);prog.value=75+((y/240*25)|0);}
-  await sendRow(239);
+
+  // Progressive passes
+  const passes=[[0,8],[4,8],[2,4],[1,2],[0,1]];
+  let passNum=0;
+  for(const [offset,step] of passes){
+    passNum++;
+    log('Pass '+passNum+'/5...');
+    for(let y=offset;y<=239;y+=step){
+      await sendRowData(rows[y]);
+      prog.value=Math.min(99,(y/240*20+passNum*15)|0);
+    }
+  }
+  await sendRowData(rows[239]);
   await sendCmd('IMGDONE');
   prog.value=100;
   log('Done!');
+}
+
+async function sendRowData(row){
+  try{await characteristic.writeValueWithoutResponse(row);}
+  catch(e){await sleep(20);try{await characteristic.writeValueWithoutResponse(row);}catch(e2){}}
+  await sleep(8);
+}
+
+async function sendCurrentImage(){
+  if(!imgCached)return;
+  document.getElementById('imgSendBtn').disabled=true;
+  await sendCachedRows(imgCached);
+  // Add to history
+  addToHistory(offscreen.toDataURL('image/jpeg',0.5),imgCached);
   document.getElementById('imgSendBtn').disabled=false;
 }
+
+// ── History ───────────────────────────────────────────
+function addToHistory(thumb,rows){
+  const entry={thumb, rows:cacheToStrings(rows), ts:Date.now()};
+  history.unshift(entry);
+  if(history.length>10)history.pop();
+  saveStore('vr_history',history);
+  renderHistory();
+}
+
+function renderHistory(){
+  const grid=document.getElementById('historyGrid');
+  if(history.length===0){grid.innerHTML='<p class="empty-hint">No history yet</p>';return;}
+  grid.innerHTML='';
+  history.forEach((item,i)=>{
+    const wrap=document.createElement('div');
+    wrap.className='thumb-wrap';
+    const img=document.createElement('img');
+    img.src=item.thumb;
+    img.title='Click to resend';
+    img.onclick=()=>resendFromStore(item.rows,'history',i);
+    const del=document.createElement('button');
+    del.className='thumb-del';del.textContent='×';
+    del.onclick=e=>{e.stopPropagation();deleteHistory(i);};
+    wrap.appendChild(img);wrap.appendChild(del);
+    grid.appendChild(wrap);
+  });
+}
+
+function deleteHistory(i){
+  history.splice(i,1);
+  saveStore('vr_history',history);
+  renderHistory();
+}
+
+// ── Library ───────────────────────────────────────────
+function saveToLibrary(){
+  if(!imgCached){log('Load an image first');return;}
+  if(library.length>=30){log('Library full (30 max) — delete some first');return;}
+  const entry={thumb:offscreen.toDataURL('image/jpeg',0.5),rows:cacheToStrings(imgCached),ts:Date.now()};
+  library.push(entry);
+  saveStore('vr_library',library);
+  renderLibrary();
+  log('Saved to library ('+library.length+'/30)');
+  if(characteristic){
+    document.getElementById('slideBtn').disabled=false;
+    document.getElementById('shuffleBtn').disabled=false;
+  }
+}
+
+function renderLibrary(){
+  const grid=document.getElementById('libraryGrid');
+  if(library.length===0){grid.innerHTML='<p class="empty-hint">Save images to build your library</p>';return;}
+  grid.innerHTML='';
+  library.forEach((item,i)=>{
+    const wrap=document.createElement('div');
+    wrap.className='thumb-wrap';
+    const img=document.createElement('img');
+    img.src=item.thumb;
+    img.title='Click to send';
+    img.id='libthumb_'+i;
+    img.onclick=()=>resendFromStore(item.rows,'library',i);
+    const del=document.createElement('button');
+    del.className='thumb-del';del.textContent='×';
+    del.onclick=e=>{e.stopPropagation();deleteLibrary(i);};
+    wrap.appendChild(img);wrap.appendChild(del);
+    grid.appendChild(wrap);
+  });
+}
+
+function deleteLibrary(i){
+  library.splice(i,1);
+  saveStore('vr_library',library);
+  renderLibrary();
+  if(library.length===0)stopSlideshow();
+  log('Deleted from library');
+}
+
+async function resendFromStore(rowStrings,from,index){
+  if(!characteristic){log('Not connected');return;}
+  // Highlight active thumb
+  document.querySelectorAll('.active-thumb').forEach(el=>el.classList.remove('active-thumb'));
+  const thumbId=from==='library'?'libthumb_'+index:null;
+  if(thumbId){const el=document.getElementById(thumbId);if(el)el.classList.add('active-thumb');}
+  log('Resending from '+from+'...');
+  const rows=stringsToCache(rowStrings);
+  document.getElementById('imgSendBtn').disabled=true;
+  await sendCachedRows(rows);
+  document.getElementById('imgSendBtn').disabled=false;
+  // Add to history if from library
+  if(from==='library'){
+    const item=library[index];
+    addToHistory(item.thumb,rows);
+  }
+}
+
+// ── Slideshow ─────────────────────────────────────────
+function toggleSlideshow(){
+  if(slideshowTimer){stopSlideshow();}
+  else{startSlideshow();}
+}
+
+function startSlideshow(){
+  if(library.length===0){log('Library is empty');return;}
+  if(!characteristic){log('Not connected');return;}
+  const interval=parseInt(document.getElementById('slideInterval').value);
+  log('Slideshow started ('+library.length+' images, every '+(interval/1000)+'s)');
+  const btn=document.getElementById('slideBtn');
+  btn.textContent='⏹ Stop';btn.classList.add('running');
+  slideshowIndex=0;
+  sendSlide(slideshowIndex);
+  slideshowTimer=setInterval(()=>{
+    slideshowIndex=(slideshowIndex+1)%library.length;
+    sendSlide(slideshowIndex);
+  },interval);
+}
+
+function stopSlideshow(){
+  if(slideshowTimer){clearInterval(slideshowTimer);slideshowTimer=null;}
+  const btn=document.getElementById('slideBtn');
+  btn.textContent='▶ Slideshow';btn.classList.remove('running');
+  log('Slideshow stopped');
+}
+
+async function sendSlide(index){
+  if(!characteristic||!library[index])return;
+  log('Slide '+(index+1)+'/'+library.length);
+  document.querySelectorAll('.active-thumb').forEach(el=>el.classList.remove('active-thumb'));
+  const el=document.getElementById('libthumb_'+index);
+  if(el)el.classList.add('active-thumb');
+  const rows=stringsToCache(library[index].rows);
+  await sendCachedRows(rows);
+}
+
+function shuffleLibrary(){
+  for(let i=library.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [library[i],library[j]]=[library[j],library[i]];
+  }
+  saveStore('vr_library',library);
+  renderLibrary();
+  log('Library shuffled!');
+}
+
+// ── Init ──────────────────────────────────────────────
+renderHistory();
+renderLibrary();
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 </script>
