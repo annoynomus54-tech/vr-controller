@@ -6,78 +6,135 @@
 <title>VR Display Controller</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:#0a0a0a;color:#fff;font-family:-apple-system,sans-serif;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:30px 20px;gap:16px}
-  h1{font-size:1.8rem;color:#00ffff}
-  .subtitle{color:#666;font-size:.9rem}
-  .status{padding:10px 24px;border-radius:20px;font-size:.9rem;background:#1a1a1a;border:1px solid #333;transition:all .3s}
-  .status.connected{border-color:#00ff88;color:#00ff88}
-  .status.disconnected{border-color:#ff4444;color:#ff4444}
-  button{background:#00ffff;color:#000;border:none;padding:12px 28px;border-radius:10px;font-size:1rem;font-weight:bold;cursor:pointer;transition:opacity .2s}
-  button:hover{opacity:.85}
-  button:disabled{opacity:.3;cursor:not-allowed}
-  .card{background:#111;border:1px solid #222;border-radius:16px;padding:20px;width:100%;max-width:480px}
-  .card h2{font-size:1rem;color:#aaa;margin-bottom:14px}
-  textarea{width:100%;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#fff;padding:10px;font-size:1rem;resize:none;height:80px;margin-bottom:10px}
-  textarea:focus{outline:none;border-color:#00ffff}
-  .btn-row{display:flex;gap:10px;flex-wrap:wrap}
-  .btn-row button{flex:1;min-width:80px;padding:10px;font-size:.9rem}
-  .btn-secondary{background:#222;color:#fff;border:1px solid #444}
-  .shape-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .shape-grid button{padding:14px;font-size:.95rem;background:#1a1a1a;color:#fff;border:1px solid #444}
-  .shape-grid button:hover:not(:disabled){border-color:#00ffff;color:#00ffff}
-  .log{width:100%;max-width:480px;background:#0d0d0d;border:1px solid #1a1a1a;border-radius:10px;padding:10px;font-size:.75rem;color:#555;height:80px;overflow-y:auto;font-family:monospace}
-  .canvas-wrap{position:relative;width:260px;height:260px;margin:0 auto}
-  #drawCanvas{border-radius:50%;cursor:crosshair;background:#000;border:2px solid #333;display:block;touch-action:none}
-  .canvas-tools{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
-  .color-btn{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:transform .2s}
-  .color-btn.active{border-color:#fff;transform:scale(1.2)}
-  input[type=range]{flex:1;accent-color:#00ffff}
-  .drop-zone{border:2px dashed #333;border-radius:12px;padding:30px 20px;text-align:center;color:#555;cursor:pointer;transition:all .2s}
-  .drop-zone.dragover{border-color:#00ffff;color:#00ffff;background:#001a1a}
+  :root{
+    --bg:#0a0a0a;--card:#111;--border:#222;
+    --accent:#00ffff;--accent2:#00ff88;--danger:#ff4444;
+    --text:#fff;--muted:#666;--muted2:#444;
+  }
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,sans-serif;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:24px 16px;gap:14px}
+  h1{font-size:1.8rem;color:var(--accent);letter-spacing:2px}
+  .subtitle{color:var(--muted);font-size:.85rem}
+  .status{padding:8px 20px;border-radius:20px;font-size:.85rem;background:#1a1a1a;border:1px solid var(--border);transition:all .3s}
+  .status.connected{border-color:var(--accent2);color:var(--accent2)}
+  .status.disconnected{border-color:var(--danger);color:var(--danger)}
+  button{background:var(--accent);color:#000;border:none;padding:10px 22px;border-radius:10px;font-size:.95rem;font-weight:bold;cursor:pointer;transition:all .2s}
+  button:hover{opacity:.85;transform:translateY(-1px)}
+  button:disabled{opacity:.3;cursor:not-allowed;transform:none}
+  .btn-secondary{background:#222;color:var(--text);border:1px solid #444}
+  .btn-danger{background:var(--danger);color:#fff}
+  .btn-green{background:var(--accent2);color:#000}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px;width:100%;max-width:500px}
+  .card h2{font-size:.95rem;color:#aaa;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  textarea{width:100%;background:#1a1a1a;border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;font-size:.95rem;resize:none;height:70px;margin-bottom:10px}
+  textarea:focus{outline:none;border-color:var(--accent)}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap}
+  .btn-row button{flex:1;min-width:70px;padding:9px;font-size:.85rem}
+  .shape-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .shape-grid button{padding:12px;font-size:.9rem;background:#1a1a1a;color:var(--text);border:1px solid #444}
+  .shape-grid button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+  /* Log sidebar */
+  .main-layout{display:flex;gap:14px;width:100%;max-width:500px;align-items:flex-start}
+  .log{flex:1;background:#0d0d0d;border:1px solid #1a1a1a;border-radius:10px;padding:10px;font-size:.72rem;color:#555;height:120px;overflow-y:auto;font-family:monospace;position:sticky;top:10px}
+  .log .entry{padding:1px 0;border-bottom:1px solid #111}
+  .log .entry.ok{color:#00aa66}
+  .log .entry.err{color:#aa3333}
+  .log .entry.info{color:#4488aa}
+  /* Draw canvas */
+  .canvas-outer{display:flex;flex-direction:column;align-items:center;gap:10px}
+  #drawCanvas{border-radius:50%;cursor:crosshair;background:#000;border:2px solid #333;display:block;touch-action:none;box-shadow:0 0 20px #00ffff22}
+  /* Color wheel */
+  #colorWheel{border-radius:50%;cursor:crosshair;border:2px solid #333}
+  .draw-tools{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;justify-content:center}
+  .tool-col{display:flex;flex-direction:column;align-items:center;gap:8px}
+  .tool-label{font-size:.75rem;color:#aaa}
+  .color-preview{width:36px;height:36px;border-radius:50%;border:3px solid #fff;cursor:pointer;transition:transform .2s}
+  .color-preview:hover{transform:scale(1.1)}
+  .quick-colors{display:flex;flex-wrap:wrap;gap:5px;max-width:160px;justify-content:center}
+  .qc{width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:transform .2s}
+  .qc:hover{transform:scale(1.2)}
+  .qc.active{border-color:#fff}
+  input[type=range]{accent-color:var(--accent);width:100%}
+  /* Image */
+  .drop-zone{border:2px dashed #333;border-radius:12px;padding:24px 16px;text-align:center;color:#555;cursor:pointer;transition:all .2s}
+  .drop-zone.dragover{border-color:var(--accent);color:var(--accent);background:#001a1a}
   .drop-zone input{display:none}
-  .drop-zone p{margin:4px 0;font-size:.9rem}
-  .drop-zone .hint{font-size:.75rem;color:#444;margin-top:8px}
-  .url-row{display:flex;gap:8px;margin-top:12px}
-  .url-row input{flex:1;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#fff;padding:9px 12px;font-size:.9rem}
-  .url-row input:focus{outline:none;border-color:#00ffff}
+  .drop-zone p{margin:3px 0;font-size:.88rem}
+  .url-row{display:flex;gap:8px;margin-top:10px}
+  .url-row input{flex:1;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#fff;padding:8px 10px;font-size:.85rem}
+  .url-row input:focus{outline:none;border-color:var(--accent)}
   .url-row input::placeholder{color:#444}
-  #imgPreview{display:none;border-radius:50%;margin-top:12px;width:120px;height:120px;border:2px solid #333}
-  progress{width:100%;height:8px;border-radius:4px;margin-top:10px;accent-color:#00ffff;display:none}
-  #imgSendBtn{display:none;margin-top:10px}
+  #imgPreview{display:none;border-radius:50%;margin-top:10px;width:110px;height:110px;border:2px solid #333;box-shadow:0 0 16px #00ffff22}
+  progress{width:100%;height:6px;border-radius:4px;margin-top:8px;accent-color:var(--accent);display:none}
+  #imgSendBtn{display:none;margin-top:8px}
   /* Thumbnails */
-  .thumb-grid{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
-  .thumb-wrap{position:relative;width:72px;height:72px;flex-shrink:0}
-  .thumb-wrap img{width:72px;height:72px;border-radius:50%;object-fit:cover;border:2px solid #333;cursor:pointer;transition:border-color .2s}
-  .thumb-wrap img:hover{border-color:#00ffff}
-  .thumb-wrap img.active-thumb{border-color:#00ff88;border-width:3px}
-  .thumb-del{position:absolute;top:-4px;right:-4px;width:20px;height:20px;border-radius:50%;background:#ff4444;color:#fff;border:none;font-size:12px;line-height:20px;text-align:center;cursor:pointer;padding:0;display:none}
+  .thumb-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .thumb-wrap{position:relative;width:64px;height:64px;flex-shrink:0}
+  .thumb-wrap img{width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid #333;cursor:pointer;transition:all .2s}
+  .thumb-wrap img:hover{border-color:var(--accent);transform:scale(1.05)}
+  .thumb-wrap img.active-thumb{border-color:var(--accent2);border-width:3px}
+  .thumb-del{position:absolute;top:-3px;right:-3px;width:18px;height:18px;border-radius:50%;background:var(--danger);color:#fff;border:none;font-size:11px;line-height:18px;text-align:center;cursor:pointer;padding:0;display:none;min-width:0}
   .thumb-wrap:hover .thumb-del{display:block}
-  .empty-hint{color:#444;font-size:.85rem;padding:10px 0}
+  .empty-hint{color:#444;font-size:.82rem;padding:8px 0}
   /* Slideshow */
-  .slide-controls{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
-  .slide-controls select{background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#fff;padding:8px 10px;font-size:.85rem}
-  #slideBtn{background:#333;color:#fff;border:1px solid #555;padding:8px 16px;font-size:.85rem}
-  #slideBtn.running{background:#ff4444;color:#fff;border-color:#ff4444}
-  .save-btn{background:#333;color:#00ffff;border:1px solid #00ffff;padding:8px 16px;font-size:.85rem;border-radius:8px;cursor:pointer;margin-top:8px;width:100%}
-  .save-btn:hover{background:#001a1a}
+  .slide-controls{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+  .slide-controls select{background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#fff;padding:7px 10px;font-size:.82rem}
+  /* Clock widget */
+  #clockDisplay{font-family:monospace;font-size:2.5rem;color:var(--accent);text-align:center;letter-spacing:4px;text-shadow:0 0 20px var(--accent)}
+  #dateDisplay{text-align:center;color:#555;font-size:.85rem;margin-top:4px}
+  /* Equalizer */
+  #eqCanvas{border-radius:12px;background:#000;border:1px solid #222}
+  /* Pattern generator */
+  .pattern-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+  .pattern-btn{padding:10px 6px;font-size:.8rem;background:#1a1a1a;color:var(--text);border:1px solid #333;border-radius:8px}
+  .pattern-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+  /* Settings */
+  .setting-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1a1a1a}
+  .setting-row:last-child{border-bottom:none}
+  .setting-row label{font-size:.88rem;color:#aaa}
+  /* Toggle switch */
+  .toggle{position:relative;width:42px;height:22px;flex-shrink:0}
+  .toggle input{opacity:0;width:0;height:0}
+  .toggle-slider{position:absolute;inset:0;background:#333;border-radius:22px;cursor:pointer;transition:.3s}
+  .toggle-slider:before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.3s}
+  .toggle input:checked+.toggle-slider{background:var(--accent)}
+  .toggle input:checked+.toggle-slider:before{transform:translateX(20px)}
+  /* Tabs */
+  .tabs{display:flex;gap:4px;margin-bottom:12px;background:#0d0d0d;border-radius:10px;padding:4px}
+  .tab{flex:1;padding:7px;border-radius:7px;font-size:.8rem;background:transparent;color:#555;border:none;cursor:pointer;transition:all .2s}
+  .tab.active{background:var(--card);color:var(--text);font-weight:bold}
+  .tab-content{display:none}
+  .tab-content.active{display:block}
+  /* Brightness slider */
+  #brightnessVal{color:var(--accent);font-size:.85rem;min-width:30px;text-align:right}
+  /* Notification */
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(100px);background:#1a1a1a;border:1px solid var(--accent);color:var(--accent);padding:10px 20px;border-radius:20px;font-size:.85rem;transition:transform .3s;z-index:999;pointer-events:none}
+  .toast.show{transform:translateX(-50%) translateY(0)}
 </style>
 </head>
 <body>
 
-<h1>⬡ VR Display</h1>
-<p class="subtitle">Bluetooth controller for XIAO ESP32-C3</p>
+<h1>⬡ VR DISPLAY</h1>
+<p class="subtitle">XIAO ESP32-C3 Bluetooth Controller</p>
 <div class="status disconnected" id="status">● Not connected</div>
 <button onclick="connect()" id="connectBtn">Connect via Bluetooth</button>
 
+<!-- MAIN LAYOUT: content + log sidebar -->
+<div class="main-layout">
+  <div class="log" id="log"><div class="entry info">> Ready</div></div>
+</div>
+
+<!-- MESSAGE -->
 <div class="card">
-  <h2>💬 Send Message</h2>
-  <textarea id="msgInput" placeholder="Type a message..." maxlength="60"></textarea>
+  <h2>💬 Message</h2>
+  <textarea id="msgInput" placeholder="Type a message to display..." maxlength="60"></textarea>
   <div class="btn-row">
     <button onclick="sendText()" id="sendBtn" disabled>Send</button>
     <button class="btn-secondary" onclick="sendCmd('CLEAR')" id="clearBtn" disabled>Clear</button>
+    <button class="btn-secondary" onclick="sendScrollText()" id="scrollBtn" disabled>Scroll</button>
   </div>
 </div>
 
+<!-- SHAPES -->
 <div class="card">
   <h2>🔷 Shapes</h2>
   <div class="shape-grid">
@@ -88,38 +145,65 @@
   </div>
   <br>
   <div class="btn-row">
-    <button class="btn-secondary shapeBtn" onclick="sendCmd('PREV')" disabled>⟵ Prev</button>
+    <button class="btn-secondary shapeBtn" onclick="sendCmd('PREV')" disabled>⟵</button>
     <button class="btn-secondary shapeBtn" onclick="sendCmd('AUTO')" disabled>⟳ Auto</button>
-    <button class="btn-secondary shapeBtn" onclick="sendCmd('NEXT')" disabled>Next ⟶</button>
+    <button class="btn-secondary shapeBtn" onclick="sendCmd('NEXT')" disabled>⟶</button>
   </div>
 </div>
 
+<!-- DRAW -->
 <div class="card">
   <h2>✏️ Draw (live)</h2>
-  <div class="canvas-wrap">
+  <div class="canvas-outer">
     <canvas id="drawCanvas" width="240" height="240"></canvas>
-  </div>
-  <div class="canvas-tools">
-    <span style="color:#aaa;font-size:.85rem">Color:</span>
-    <div class="color-btn active" style="background:#ffffff" onclick="setColor('#ffffff',this)"></div>
-    <div class="color-btn" style="background:#00ffff" onclick="setColor('#00ffff',this)"></div>
-    <div class="color-btn" style="background:#ff4444" onclick="setColor('#ff4444',this)"></div>
-    <div class="color-btn" style="background:#44ff44" onclick="setColor('#44ff44',this)"></div>
-    <div class="color-btn" style="background:#ffff00" onclick="setColor('#ffff00',this)"></div>
-    <div class="color-btn" style="background:#ff44ff" onclick="setColor('#ff44ff',this)"></div>
-    <div class="color-btn" style="background:#000000;border:1px solid #444" onclick="setColor('#000000',this)"></div>
-  </div>
-  <div class="canvas-tools">
-    <span style="color:#aaa;font-size:.85rem">Size:</span>
-    <input type="range" id="brushSize" min="1" max="20" value="3">
-    <span id="brushLabel" style="color:#aaa;font-size:.85rem">3px</span>
-  </div>
-  <br>
-  <div class="btn-row">
-    <button class="btn-secondary" id="clearDrawBtn" onclick="clearDraw()" disabled>🗑 Clear</button>
+
+    <div class="draw-tools">
+      <!-- Color wheel -->
+      <div class="tool-col">
+        <span class="tool-label">Color Wheel</span>
+        <canvas id="colorWheel" width="80" height="80"></canvas>
+        <div class="color-preview" id="colorPreview" style="background:#ffffff"></div>
+      </div>
+
+      <!-- Quick colors -->
+      <div class="tool-col">
+        <span class="tool-label">Quick Colors</span>
+        <div class="quick-colors">
+          <div class="qc active" style="background:#ffffff" onclick="pickQuick('#ffffff',this)"></div>
+          <div class="qc" style="background:#ff4444" onclick="pickQuick('#ff4444',this)"></div>
+          <div class="qc" style="background:#ff8800" onclick="pickQuick('#ff8800',this)"></div>
+          <div class="qc" style="background:#ffff00" onclick="pickQuick('#ffff00',this)"></div>
+          <div class="qc" style="background:#44ff44" onclick="pickQuick('#44ff44',this)"></div>
+          <div class="qc" style="background:#00ffff" onclick="pickQuick('#00ffff',this)"></div>
+          <div class="qc" style="background:#4444ff" onclick="pickQuick('#4444ff',this)"></div>
+          <div class="qc" style="background:#ff44ff" onclick="pickQuick('#ff44ff',this)"></div>
+          <div class="qc" style="background:#000000;border-color:#444" onclick="pickQuick('#000000',this)"></div>
+          <div class="qc" style="background:#884400" onclick="pickQuick('#884400',this)"></div>
+          <div class="qc" style="background:#888888" onclick="pickQuick('#888888',this)"></div>
+          <div class="qc" style="background:#ff88aa" onclick="pickQuick('#ff88aa',this)"></div>
+        </div>
+      </div>
+
+      <!-- Brush -->
+      <div class="tool-col" style="min-width:100px">
+        <span class="tool-label">Size: <span id="brushLabel">3</span>px</span>
+        <input type="range" id="brushSize" min="1" max="30" value="3">
+        <span class="tool-label">Opacity: <span id="opacityLabel">100</span>%</span>
+        <input type="range" id="brushOpacity" min="10" max="100" value="100">
+        <!-- Eraser -->
+        <button class="btn-secondary" id="eraserBtn" onclick="toggleEraser()" style="padding:6px 10px;font-size:.78rem;margin-top:4px">⬜ Eraser</button>
+      </div>
+    </div>
+
+    <div class="btn-row" style="width:100%;max-width:260px">
+      <button class="btn-secondary" id="clearDrawBtn" onclick="clearDraw()" disabled>🗑 Clear</button>
+      <button class="btn-secondary" onclick="undoStroke()" id="undoBtn" disabled>↩ Undo</button>
+      <button class="btn-secondary" onclick="fillCanvas()" id="fillBtn" disabled>🪣 Fill</button>
+    </div>
   </div>
 </div>
 
+<!-- IMAGE -->
 <div class="card">
   <h2>🖼 Send Image</h2>
   <div class="drop-zone" id="dropZone"
@@ -128,48 +212,135 @@
        ondragleave="dragLeave(event)"
        ondrop="dropImage(event)">
     <input type="file" id="imgFile" accept="image/*" onchange="loadFromFile(event)">
-    <p>📂 Click to choose</p>
-    <p>🖱 Or drag any image here</p>
-    <p class="hint">From Finder, browser, or paste with Cmd+V</p>
+    <p>📂 Click · 🖱 Drag · ⌘V Paste</p>
+    <p style="font-size:.75rem;color:#444;margin-top:4px">Cropped to 240×240 circle</p>
   </div>
   <div class="url-row">
-    <input type="text" id="imgUrl" placeholder="Or paste an image URL...">
-    <button onclick="loadFromUrl()" style="background:#333;color:#fff;border:1px solid #555;flex-shrink:0">Fetch</button>
+    <input type="text" id="imgUrl" placeholder="Paste image URL...">
+    <button onclick="loadFromUrl()" class="btn-secondary" style="flex-shrink:0;padding:8px 12px;font-size:.82rem">Fetch</button>
   </div>
   <img id="imgPreview">
   <progress id="imgProgress" value="0" max="100"></progress>
-  <button id="imgSendBtn" onclick="sendCurrentImage()" disabled>📤 Send to Screen</button>
-  <button class="save-btn" id="saveLibBtn" onclick="saveToLibrary()" style="display:none">💾 Save to Library</button>
+  <div class="btn-row" style="margin-top:8px">
+    <button id="imgSendBtn" onclick="sendCurrentImage()" disabled style="display:none">📤 Send</button>
+    <button class="btn-secondary" id="saveLibBtn" onclick="saveToLibrary()" style="display:none;font-size:.82rem">💾 Save to Library</button>
+  </div>
 </div>
 
 <!-- HISTORY -->
 <div class="card">
-  <h2>🕓 Recent History <span style="color:#444;font-size:.8rem;font-weight:normal">(tap to resend, hover to delete)</span></h2>
-  <div class="thumb-grid" id="historyGrid">
-    <p class="empty-hint">No history yet</p>
+  <h2>🕓 Recent <span style="color:#444;font-size:.75rem;font-weight:normal">tap=load · hover=delete</span></h2>
+  <div class="thumb-grid" id="historyGrid"><p class="empty-hint">No history yet</p></div>
+  <div class="btn-row" style="margin-top:10px">
+    <button class="btn-secondary" onclick="clearHistory()" style="font-size:.78rem;padding:6px">Clear History</button>
   </div>
 </div>
 
 <!-- LIBRARY + SLIDESHOW -->
 <div class="card">
-  <h2>📚 Library <span style="color:#444;font-size:.8rem;font-weight:normal">(hover to delete)</span></h2>
-  <div class="thumb-grid" id="libraryGrid">
-    <p class="empty-hint">Save images to build your library</p>
-  </div>
+  <h2>📚 Library <span style="color:#444;font-size:.75rem;font-weight:normal">hover=delete</span></h2>
+  <div class="thumb-grid" id="libraryGrid"><p class="empty-hint">Save images to build your library</p></div>
   <div class="slide-controls">
-    <span style="color:#aaa;font-size:.85rem">Interval:</span>
     <select id="slideInterval">
-      <option value="5000">5 sec</option>
-      <option value="10000" selected>10 sec</option>
-      <option value="30000">30 sec</option>
-      <option value="60000">1 min</option>
+      <option value="3000">3s</option>
+      <option value="5000">5s</option>
+      <option value="10000" selected>10s</option>
+      <option value="30000">30s</option>
+      <option value="60000">1min</option>
     </select>
-    <button id="slideBtn" onclick="toggleSlideshow()" disabled>▶ Slideshow</button>
-    <button class="btn-secondary" onclick="shuffleLibrary()" id="shuffleBtn" disabled style="padding:8px 12px;font-size:.85rem">🔀</button>
+    <button id="slideBtn" onclick="toggleSlideshow()" disabled class="btn-secondary">▶ Slideshow</button>
+    <button onclick="shuffleLibrary()" id="shuffleBtn" disabled class="btn-secondary" style="padding:8px 12px">🔀</button>
+    <button onclick="clearLibrary()" class="btn-secondary" style="padding:8px 12px;font-size:.78rem">🗑</button>
   </div>
 </div>
 
-<div class="log" id="log">Waiting for connection...</div>
+<!-- COOL EXTRAS -->
+<div class="card">
+  <h2>✨ Extras</h2>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('clock')">🕐 Clock</button>
+    <button class="tab" onclick="switchTab('patterns')">🎨 Patterns</button>
+    <button class="tab" onclick="switchTab('eq')">🎵 Music</button>
+    <button class="tab" onclick="switchTab('settings')">⚙️ Settings</button>
+  </div>
+
+  <!-- Clock tab -->
+  <div class="tab-content active" id="tab-clock">
+    <div id="clockDisplay">--:--:--</div>
+    <div id="dateDisplay">---</div>
+    <br>
+    <div class="btn-row">
+      <button id="clockSendBtn" onclick="startClock()" disabled>📡 Stream Clock</button>
+      <button class="btn-secondary" onclick="stopClock()" id="clockStopBtn" style="display:none">⏹ Stop</button>
+    </div>
+    <p style="color:#444;font-size:.75rem;margin-top:8px">Sends live time to screen every second</p>
+  </div>
+
+  <!-- Patterns tab -->
+  <div class="tab-content" id="tab-patterns">
+    <div class="pattern-grid">
+      <button class="pattern-btn" onclick="sendPattern('rainbow')" id="pat0" disabled>🌈 Rainbow</button>
+      <button class="pattern-btn" onclick="sendPattern('spiral')" id="pat1" disabled>🌀 Spiral</button>
+      <button class="pattern-btn" onclick="sendPattern('checkers')" id="pat2" disabled>♟ Checkers</button>
+      <button class="pattern-btn" onclick="sendPattern('gradient')" id="pat3" disabled>🎨 Gradient</button>
+      <button class="pattern-btn" onclick="sendPattern('fire')" id="pat4" disabled>🔥 Fire</button>
+      <button class="pattern-btn" onclick="sendPattern('stars')" id="pat5" disabled>🌌 Stars</button>
+      <button class="pattern-btn" onclick="sendPattern('plasma')" id="pat6" disabled>💫 Plasma</button>
+      <button class="pattern-btn" onclick="sendPattern('rings')" id="pat7" disabled>⭕ Rings</button>
+      <button class="pattern-btn" onclick="sendPattern('noise')" id="pat8" disabled>📺 Noise</button>
+    </div>
+  </div>
+
+  <!-- EQ / Music tab -->
+  <div class="tab-content" id="tab-eq">
+    <canvas id="eqCanvas" width="440" height="100" style="width:100%;max-width:440px"></canvas>
+    <br><br>
+    <div class="btn-row">
+      <button id="micBtn" onclick="toggleMic()" disabled>🎤 Visualize Mic</button>
+      <button class="btn-secondary" onclick="stopMic()" id="micStopBtn" style="display:none">⏹ Stop</button>
+    </div>
+    <p style="color:#444;font-size:.75rem;margin-top:8px">Sends mic audio visualizer to screen</p>
+  </div>
+
+  <!-- Settings tab -->
+  <div class="tab-content" id="tab-settings">
+    <div class="setting-row">
+      <label>Screen Brightness</label>
+      <div style="display:flex;align-items:center;gap:8px;flex:1;margin-left:16px">
+        <input type="range" id="brightnessSlider" min="0" max="255" value="200" oninput="setBrightness(this.value)">
+        <span id="brightnessVal">200</span>
+      </div>
+    </div>
+    <div class="setting-row">
+      <label>Auto-advance shapes</label>
+      <label class="toggle">
+        <input type="checkbox" checked onchange="sendCmd(this.checked?'AUTO':'PAUSE')">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="setting-row">
+      <label>Spin speed</label>
+      <div style="display:flex;align-items:center;gap:8px;flex:1;margin-left:16px">
+        <input type="range" id="spinSpeed" min="1" max="10" value="5" oninput="setSpinSpeed(this.value)">
+        <span id="spinVal" style="color:var(--accent);font-size:.85rem">5</span>
+      </div>
+    </div>
+    <div class="setting-row">
+      <label>Night mode (dim at night)</label>
+      <label class="toggle">
+        <input type="checkbox" id="nightMode" onchange="toggleNightMode(this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <br>
+    <div class="btn-row">
+      <button class="btn-secondary" onclick="sendCmd('RESTART')" style="font-size:.8rem">🔄 Restart Display</button>
+      <button class="btn-danger" onclick="factoryReset()" style="font-size:.8rem">⚠️ Reset All</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
 
 <script>
 const SERVICE_UUID='6e400001-b5a3-f393-e0a9-e50e24dcca9e';
@@ -177,75 +348,329 @@ const CHAR_UUID='6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 let characteristic=null;
 let drawColor='#ffffff';
 let brushSize=3;
+let brushOpacity=1.0;
+let eraserMode=false;
 let drawing=false;
 let lastX=0,lastY=0;
 let canvasReady=false;
 let imgPixels=null;
 let imgCached=null;
+let imgThumb=null;
 let sendQueue=[];
 let sending=false;
 let slideshowTimer=null;
 let slideshowIndex=0;
-let isSendingImage=false; // global lock — only one image sends at a time
+let isSendingImage=false;
+let clockTimer=null;
+let micStream=null;
+let audioCtx=null;
+let analyser=null;
+let eqAnimFrame=null;
+let strokeHistory=[];
+let currentStroke=[];
 
-// ── Storage ───────────────────────────────────────────
-// Use localStorage for persistence across reloads
 function loadStore(key){try{return JSON.parse(localStorage.getItem(key)||'[]');}catch{return[];}}
 function saveStore(key,val){
   try{localStorage.setItem(key,JSON.stringify(val));}
   catch(e){
-    log('Storage full — deleting oldest items...');
-    // If storage is full, trim and retry
-    if(key==='vr_history'){val=val.slice(0,5);}
-    if(key==='vr_library'){val=val.slice(0,15);}
-    try{localStorage.setItem(key,JSON.stringify(val));}catch(e2){log('Could not save — storage full');}
+    log('Storage full — trimming...','err');
+    if(key==='vr_history')val=val.slice(0,5);
+    if(key==='vr_library')val=val.slice(0,15);
+    try{localStorage.setItem(key,JSON.stringify(val));}catch(e2){}
   }
 }
 
 let history=loadStore('vr_history');
 let library=loadStore('vr_library');
 
-function log(msg){const el=document.getElementById('log');el.innerHTML+=`<div>> ${msg}</div>`;el.scrollTop=el.scrollHeight;}
+// ── Log ───────────────────────────────────────────────
+function log(msg,type='info'){
+  const el=document.getElementById('log');
+  const d=document.createElement('div');
+  d.className='entry '+(type||'info');
+  d.textContent='> '+msg;
+  el.appendChild(d);
+  el.scrollTop=el.scrollHeight;
+  // Keep max 80 entries
+  while(el.children.length>80)el.removeChild(el.firstChild);
+}
 
-function setConnected(val){
-  document.getElementById('status').textContent=val?'● Connected to VR-Display':'● Not connected';
-  document.getElementById('status').className='status '+(val?'connected':'disconnected');
-  document.getElementById('connectBtn').textContent=val?'Disconnect':'Connect via Bluetooth';
-  document.querySelectorAll('#sendBtn,#clearBtn,#clearDrawBtn,.shapeBtn').forEach(b=>b.disabled=!val);
-  if(val&&imgPixels)document.getElementById('imgSendBtn').disabled=false;
-  if(val&&library.length>0){
-    document.getElementById('slideBtn').disabled=false;
-    document.getElementById('shuffleBtn').disabled=false;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// ── Tabs ──────────────────────────────────────────────
+function switchTab(id){
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    const ids=['clock','patterns','eq','settings'];
+    t.classList.toggle('active',ids[i]===id);
+  });
+  document.querySelectorAll('.tab-content').forEach(c=>{
+    c.classList.toggle('active',c.id==='tab-'+id);
+  });
+}
+
+// ── Clock widget ──────────────────────────────────────
+function updateClock(){
+  const now=new Date();
+  const h=String(now.getHours()).padStart(2,'0');
+  const m=String(now.getMinutes()).padStart(2,'0');
+  const s=String(now.getSeconds()).padStart(2,'0');
+  document.getElementById('clockDisplay').textContent=h+':'+m+':'+s;
+  const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('dateDisplay').textContent=days[now.getDay()]+' '+months[now.getMonth()]+' '+now.getDate()+' '+now.getFullYear();
+}
+setInterval(updateClock,1000);updateClock();
+
+let clockStreaming=false;
+function startClock(){
+  if(!characteristic){log('Not connected','err');return;}
+  clockStreaming=true;
+  document.getElementById('clockSendBtn').style.display='none';
+  document.getElementById('clockStopBtn').style.display='block';
+  log('Clock streaming started','ok');
+  streamClockTick();
+}
+async function streamClockTick(){
+  if(!clockStreaming||!characteristic)return;
+  const now=new Date();
+  const h=String(now.getHours()).padStart(2,'0');
+  const m=String(now.getMinutes()).padStart(2,'0');
+  const s=String(now.getSeconds()).padStart(2,'0');
+  await sendCmd('TEXT:'+h+':'+m+':'+s);
+  clockTimer=setTimeout(streamClockTick,1000);
+}
+function stopClock(){
+  clockStreaming=false;
+  if(clockTimer)clearTimeout(clockTimer);
+  document.getElementById('clockSendBtn').style.display='block';
+  document.getElementById('clockStopBtn').style.display='none';
+  log('Clock stopped');
+}
+
+// ── Patterns ──────────────────────────────────────────
+function generatePattern(name){
+  const w=offscreen.width,h=offscreen.height;
+  octx.clearRect(0,0,w,h);
+  const cx=w/2,cy=h/2;
+  const imgD=octx.createImageData(w,h);
+  const d=imgD.data;
+
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const i=(y*w+x)*4;
+      const dx=x-cx,dy=y-cy;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      const angle=Math.atan2(dy,dx);
+      let r=0,g=0,b=0,a=255;
+
+      // Only draw within circle
+      if(dist>cx){a=0;d[i+3]=0;continue;}
+
+      switch(name){
+        case 'rainbow':{
+          const hue=((angle+Math.PI)/(Math.PI*2)*360+dist)%360;
+          const c=hsvToRgb(hue,1,1);r=c[0];g=c[1];b=c[2];break;
+        }
+        case 'spiral':{
+          const t=(angle+Math.PI)/(Math.PI*2)+dist/50;
+          const hue=(t*360)%360;
+          const c=hsvToRgb(hue,1,1);r=c[0];g=c[1];b=c[2];break;
+        }
+        case 'checkers':{
+          const sq=20;
+          const cx2=Math.floor(x/sq),cy2=Math.floor(y/sq);
+          const on=(cx2+cy2)%2===0;
+          r=on?0:255;g=on?255:0;b=on?255:0;break;
+        }
+        case 'gradient':{
+          r=Math.floor(x/w*255);g=Math.floor(y/h*255);b=Math.floor(dist/cx*255);break;
+        }
+        case 'fire':{
+          const heat=Math.max(0,1-dist/cx);
+          r=Math.floor(heat*255);g=Math.floor(heat*heat*180);b=0;break;
+        }
+        case 'stars':{
+          const seed=(x*1234+y*5678)%1000;
+          if(seed<15){r=255;g=255;b=255;}
+          else if(seed<20){r=200;g=200;b=255;}
+          else{r=0;g=0;b=Math.floor(dist/cx*40);}
+          break;
+        }
+        case 'plasma':{
+          const v=Math.sin(x/10)+Math.sin(y/10)+Math.sin((x+y)/10)+Math.sin(dist/10);
+          const hue=(v+4)/8*360;
+          const c=hsvToRgb(hue,1,1);r=c[0];g=c[1];b=c[2];break;
+        }
+        case 'rings':{
+          const ring=Math.floor(dist/15)%2;
+          const hue=(Math.floor(dist/15)*45)%360;
+          const c=hsvToRgb(hue,1,ring?1:0.5);r=c[0];g=c[1];b=c[2];break;
+        }
+        case 'noise':{
+          r=Math.floor(Math.random()*255);g=r;b=r;break;
+        }
+      }
+      d[i]=r;d[i+1]=g;d[i+2]=b;d[i+3]=a;
+    }
+  }
+  octx.putImageData(imgD,0,0);
+}
+
+function hsvToRgb(h,s,v){
+  const i=Math.floor(h/60)%6;
+  const f=h/60-Math.floor(h/60);
+  const p=v*(1-s),q=v*(1-f*s),t=v*(1-(1-f)*s);
+  const rgb=[[v,t,p],[q,v,p],[p,v,t],[p,q,v],[t,p,v],[v,p,q]][i];
+  return rgb.map(x=>Math.floor(x*255));
+}
+
+async function sendPattern(name){
+  if(!characteristic){log('Not connected','err');return;}
+  log('Generating '+name+' pattern...','info');
+  generatePattern(name);
+  imgPixels=octx.getImageData(0,0,240,240);
+  imgCached=buildCache(imgPixels);
+  imgThumb=offscreen.toDataURL('image/jpeg',0.6);
+  const prev=document.getElementById('imgPreview');
+  prev.src=imgThumb;prev.style.display='block';
+  document.getElementById('imgSendBtn').style.display='block';
+  document.getElementById('imgSendBtn').disabled=false;
+  document.getElementById('saveLibBtn').style.display='block';
+  await sendCachedRows(imgCached);
+  addToHistory(imgThumb,imgCached);
+  toast('Pattern sent!');
+}
+
+// ── Mic visualizer ────────────────────────────────────
+async function toggleMic(){
+  if(!characteristic){log('Not connected','err');return;}
+  try{
+    micStream=await navigator.mediaDevices.getUserMedia({audio:true});
+    audioCtx=new AudioContext();
+    analyser=audioCtx.createAnalyser();
+    analyser.fftSize=256;
+    const src=audioCtx.createMediaStreamSource(micStream);
+    src.connect(analyser);
+    document.getElementById('micBtn').style.display='none';
+    document.getElementById('micStopBtn').style.display='block';
+    log('Mic started','ok');
+    drawEQ();
+  }catch(e){log('Mic error: '+e.message,'err');}
+}
+
+function stopMic(){
+  if(micStream)micStream.getTracks().forEach(t=>t.stop());
+  if(audioCtx)audioCtx.close();
+  if(eqAnimFrame)cancelAnimationFrame(eqAnimFrame);
+  document.getElementById('micBtn').style.display='block';
+  document.getElementById('micStopBtn').style.display='none';
+  log('Mic stopped');
+}
+
+let lastEQSend=0;
+function drawEQ(){
+  const eqCanvas=document.getElementById('eqCanvas');
+  const ec=eqCanvas.getContext('2d');
+  const bufLen=analyser.frequencyBinCount;
+  const data=new Uint8Array(bufLen);
+  analyser.getByteFrequencyData(data);
+  ec.fillStyle='#000';ec.fillRect(0,0,eqCanvas.width,eqCanvas.height);
+  const bw=eqCanvas.width/bufLen;
+  for(let i=0;i<bufLen;i++){
+    const bh=data[i]/255*eqCanvas.height;
+    const hue=i/bufLen*240;
+    ec.fillStyle=`hsl(${hue},100%,50%)`;
+    ec.fillRect(i*bw,eqCanvas.height-bh,bw-1,bh);
+  }
+  // Send EQ frame to display every 500ms
+  const now=Date.now();
+  if(characteristic&&now-lastEQSend>500){
+    lastEQSend=now;
+    sendEQFrame(data);
+  }
+  eqAnimFrame=requestAnimationFrame(drawEQ);
+}
+
+async function sendEQFrame(data){
+  // Draw EQ on offscreen canvas and send as image
+  const tempCanvas=document.createElement('canvas');
+  tempCanvas.width=240;tempCanvas.height=240;
+  const tc=tempCanvas.getContext('2d');
+  tc.fillStyle='#000';tc.fillRect(0,0,240,240);
+  const barW=240/data.length;
+  for(let i=0;i<data.length;i++){
+    const bh=data[i]/255*200;
+    const hue=i/data.length*240;
+    tc.fillStyle=`hsl(${hue},100%,50%)`;
+    tc.fillRect(i*barW,240-bh,barW-1,bh);
+  }
+  // Draw circle mask
+  tc.globalCompositeOperation='destination-in';
+  tc.beginPath();tc.arc(120,120,120,0,Math.PI*2);tc.fill();
+  tc.globalCompositeOperation='source-over';
+  const px=tc.getImageData(0,0,240,240);
+  const rows=buildCache(px);
+  await sendCachedRows(rows);
+}
+
+// ── Settings ──────────────────────────────────────────
+function setBrightness(val){
+  document.getElementById('brightnessVal').textContent=val;
+  if(characteristic)sendCmd('BRIGHT:'+val);
+}
+function setSpinSpeed(val){
+  document.getElementById('spinVal').textContent=val;
+  if(characteristic)sendCmd('SPEED:'+val);
+}
+function toggleNightMode(on){
+  const hour=new Date().getHours();
+  if(on&&(hour>=22||hour<7)){
+    setBrightness(30);
+    document.getElementById('brightnessSlider').value=30;
+    log('Night mode on — dimmed','ok');
+  }
+}
+function factoryReset(){
+  if(confirm('Clear all history and library?')){
+    localStorage.removeItem('vr_history');
+    localStorage.removeItem('vr_library');
+    history=[];library=[];
+    renderHistory();renderLibrary();
+    toast('Reset done');
+    log('Factory reset','ok');
   }
 }
 
+// ── BLE ───────────────────────────────────────────────
+function setConnected(val){
+  document.getElementById('status').textContent=val?'● Connected':'● Not connected';
+  document.getElementById('status').className='status '+(val?'connected':'disconnected');
+  document.getElementById('connectBtn').textContent=val?'Disconnect':'Connect';
+  const btns=document.querySelectorAll('#sendBtn,#clearBtn,#scrollBtn,#clearDrawBtn,#undoBtn,#fillBtn,.shapeBtn,#clockSendBtn,#micBtn,[id^=pat]');
+  btns.forEach(b=>b.disabled=!val);
+  if(val&&imgPixels)document.getElementById('imgSendBtn').disabled=false;
+  if(val&&library.length>0){document.getElementById('slideBtn').disabled=false;document.getElementById('shuffleBtn').disabled=false;}
+}
+
 async function connect(){
-  if(characteristic){
-    characteristic=null;setConnected(false);canvasReady=false;
-    stopSlideshow();log('Disconnected');return;
-  }
+  if(characteristic){characteristic=null;setConnected(false);canvasReady=false;stopSlideshow();stopClock();stopMic();log('Disconnected','err');return;}
   try{
-    log('Scanning for VR device...');
-    const device=await navigator.bluetooth.requestDevice({
-      filters:[{namePrefix:'VR'}],
-      optionalServices:[SERVICE_UUID]
-    });
-    log('Found: '+device.name);
+    log('Scanning...','info');
+    const device=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'VR'}],optionalServices:[SERVICE_UUID]});
+    log('Found: '+device.name,'info');
     const server=await device.gatt.connect();
     const service=await server.getPrimaryService(SERVICE_UUID);
     characteristic=await service.getCharacteristic(CHAR_UUID);
     setConnected(true);canvasReady=false;
-    log('Connected!');
-    device.addEventListener('gattserverdisconnected',()=>{
-      characteristic=null;canvasReady=false;
-      setConnected(false);stopSlideshow();
-      isSendingImage=false;
-      log('Disconnected');
-    });
-  }catch(e){log('Error: '+e.message);}
+    log('Connected!','ok');toast('Connected!');
+    device.addEventListener('gattserverdisconnected',()=>{characteristic=null;canvasReady=false;setConnected(false);stopSlideshow();stopClock();isSendingImage=false;log('Disconnected','err');});
+  }catch(e){log('Error: '+e.message,'err');}
 }
 
-// ── Queue ─────────────────────────────────────────────
 async function processQueue(){
   if(sending||sendQueue.length===0)return;
   sending=true;
@@ -253,10 +678,8 @@ async function processQueue(){
     if(!characteristic)break;
     const item=sendQueue.shift();
     try{
-      if(item instanceof Uint8Array)
-        await characteristic.writeValueWithoutResponse(item);
-      else
-        await characteristic.writeValue(new TextEncoder().encode(item+'\n'));
+      if(item instanceof Uint8Array)await characteristic.writeValueWithoutResponse(item);
+      else await characteristic.writeValue(new TextEncoder().encode(item+'\n'));
     }catch(e){
       await sleep(15);
       try{if(item instanceof Uint8Array)await characteristic.writeValueWithoutResponse(item);}catch(e2){}
@@ -269,37 +692,124 @@ function queue(item){sendQueue.push(item);processQueue();}
 
 async function sendCmd(cmd){
   if(!characteristic)return;
-  // Always flush queue before a command
-  sendQueue=[];
-  sending=false;
-  await sleep(30); // let any in-flight writes finish
-  try{
-    await characteristic.writeValue(new TextEncoder().encode(cmd+'\n'));
-  }catch(e){log('Error: '+e.message);}
+  sendQueue=[];sending=false;
+  await sleep(30);
+  try{await characteristic.writeValue(new TextEncoder().encode(cmd+'\n'));}
+  catch(e){log('Cmd error: '+e.message,'err');}
 }
 
-function sendText(){
+function sendText(){const msg=document.getElementById('msgInput').value.trim();if(msg)sendCmd('TEXT:'+msg);}
+function sendScrollText(){
   const msg=document.getElementById('msgInput').value.trim();
-  if(msg)sendCmd('TEXT:'+msg);
+  if(msg)sendCmd('SCROLL:'+msg);
 }
-document.getElementById('msgInput').addEventListener('keydown',e=>{
-  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendText();}
-});
+document.getElementById('msgInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendText();}});
+
+// ── Color wheel ───────────────────────────────────────
+const wheelCanvas=document.getElementById('colorWheel');
+const wctx=wheelCanvas.getContext('2d');
+
+function drawColorWheel(){
+  const cx=40,cy=40,r=38;
+  for(let angle=0;angle<360;angle++){
+    const start=angle*Math.PI/180;
+    const end=(angle+2)*Math.PI/180;
+    const grad=wctx.createRadialGradient(cx,cy,0,cx,cy,r);
+    grad.addColorStop(0,'#fff');
+    grad.addColorStop(1,`hsl(${angle},100%,50%)`);
+    wctx.beginPath();wctx.moveTo(cx,cy);
+    wctx.arc(cx,cy,r,start,end);
+    wctx.closePath();
+    wctx.fillStyle=grad;wctx.fill();
+  }
+  // Dark center for black
+  const dark=wctx.createRadialGradient(cx,cy,0,cx,cy,r);
+  dark.addColorStop(0,'rgba(0,0,0,0)');
+  dark.addColorStop(0.5,'rgba(0,0,0,0)');
+  dark.addColorStop(1,'rgba(0,0,0,0.3)');
+  wctx.fillStyle=dark;wctx.beginPath();wctx.arc(cx,cy,r,0,Math.PI*2);wctx.fill();
+}
+drawColorWheel();
+
+function pickFromWheel(e){
+  const r=wheelCanvas.getBoundingClientRect();
+  const x=e.clientX-r.left,y=e.clientY-r.top;
+  const pixel=wctx.getImageData(Math.round(x),Math.round(y),1,1).data;
+  if(pixel[3]<10)return;
+  const hex='#'+[pixel[0],pixel[1],pixel[2]].map(v=>v.toString(16).padStart(2,'0')).join('');
+  setDrawColor(hex);
+  document.querySelectorAll('.qc').forEach(q=>q.classList.remove('active'));
+}
+wheelCanvas.addEventListener('click',pickFromWheel);
+wheelCanvas.addEventListener('mousemove',e=>{if(e.buttons===1)pickFromWheel(e);});
+
+function setDrawColor(col){
+  drawColor=col;
+  eraserMode=false;
+  document.getElementById('colorPreview').style.background=col;
+  document.getElementById('eraserBtn').style.borderColor='';
+}
+function pickQuick(col,btn){
+  setDrawColor(col);
+  document.querySelectorAll('.qc').forEach(q=>q.classList.remove('active'));
+  btn.classList.add('active');
+}
 
 // ── Draw canvas ───────────────────────────────────────
 const canvas=document.getElementById('drawCanvas');
 const ctx=canvas.getContext('2d');
 ctx.fillStyle='#000';ctx.fillRect(0,0,240,240);
 
-function setColor(col,btn){
-  drawColor=col;
-  document.querySelectorAll('.color-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-}
 document.getElementById('brushSize').addEventListener('input',function(){
   brushSize=parseInt(this.value);
-  document.getElementById('brushLabel').textContent=brushSize+'px';
+  document.getElementById('brushLabel').textContent=brushSize;
 });
+document.getElementById('brushOpacity').addEventListener('input',function(){
+  brushOpacity=parseInt(this.value)/100;
+  document.getElementById('opacityLabel').textContent=this.value;
+});
+
+function toggleEraser(){
+  eraserMode=!eraserMode;
+  document.getElementById('eraserBtn').style.borderColor=eraserMode?'#00ffff':'';
+}
+
+function fillCanvas(){
+  ctx.fillStyle=drawColor;ctx.fillRect(0,0,240,240);
+  if(characteristic&&canvasReady){
+    // Send fill as a pattern
+    const px=ctx.getImageData(0,0,240,240);
+    const rows=buildCache(px);
+    sendCachedRows(rows);
+  }
+}
+
+function undoStroke(){
+  if(strokeHistory.length===0)return;
+  strokeHistory.pop();
+  ctx.fillStyle='#000';ctx.fillRect(0,0,240,240);
+  strokeHistory.forEach(stroke=>{
+    ctx.strokeStyle=stroke.color;
+    ctx.lineWidth=stroke.size;
+    ctx.lineCap='round';
+    ctx.globalAlpha=stroke.opacity;
+    ctx.beginPath();
+    stroke.points.forEach((p,i)=>{
+      if(i===0)ctx.moveTo(p.x,p.y);
+      else ctx.lineTo(p.x,p.y);
+    });
+    ctx.stroke();
+  });
+  ctx.globalAlpha=1;
+  log('Undo','info');
+  // Send cleared canvas redraw
+  if(characteristic&&canvasReady){
+    const px=ctx.getImageData(0,0,240,240);
+    const rows=buildCache(px);
+    sendCachedRows(rows);
+  }
+}
+
 function getPos(e){
   const r=canvas.getBoundingClientRect();
   const t=e.touches?e.touches[0]:e;
@@ -316,9 +826,11 @@ function makeDRW(x1,y1,x2,y2,r,g,b,size){
   buf[11]=r;buf[12]=g;buf[13]=b;buf[14]=size;
   return buf;
 }
+
 async function startDraw(e){
   drawing=true;
   const p=getPos(e);lastX=p.x;lastY=p.y;
+  currentStroke={color:eraserMode?'#000000':drawColor,size:brushSize,opacity:brushOpacity,points:[{x:p.x,y:p.y}]};
   if(!canvasReady&&characteristic){
     canvasReady=true;
     await sendCmd('DRAWCLEAR');
@@ -328,28 +840,38 @@ async function startDraw(e){
 function doDrawMove(e){
   if(!drawing)return;
   const p=getPos(e);
-  ctx.strokeStyle=drawColor;ctx.lineWidth=brushSize;ctx.lineCap='round';
+  const col=eraserMode?'#000000':drawColor;
+  ctx.strokeStyle=col;ctx.lineWidth=brushSize;ctx.lineCap='round';
+  ctx.globalAlpha=brushOpacity;
   ctx.beginPath();ctx.moveTo(lastX,lastY);ctx.lineTo(p.x,p.y);ctx.stroke();
+  ctx.globalAlpha=1;
+  currentStroke.points.push({x:p.x,y:p.y});
   if(characteristic&&canvasReady){
-    const{r,g,b}=hexToRgb(drawColor);
+    const{r,g,b}=hexToRgb(col);
     queue(makeDRW(lastX,lastY,p.x,p.y,r,g,b,brushSize));
   }
   lastX=p.x;lastY=p.y;
 }
+function endDraw(){
+  if(drawing&&currentStroke){strokeHistory.push(currentStroke);currentStroke=null;}
+  drawing=false;
+}
+
 canvas.addEventListener('mousedown',e=>startDraw(e));
 canvas.addEventListener('mousemove',doDrawMove);
-canvas.addEventListener('mouseup',()=>drawing=false);
-canvas.addEventListener('mouseleave',()=>drawing=false);
+canvas.addEventListener('mouseup',endDraw);
+canvas.addEventListener('mouseleave',endDraw);
 canvas.addEventListener('touchstart',e=>{e.preventDefault();startDraw(e);},{passive:false});
 canvas.addEventListener('touchmove',e=>{e.preventDefault();doDrawMove(e);},{passive:false});
-canvas.addEventListener('touchend',()=>drawing=false);
+canvas.addEventListener('touchend',endDraw);
+
 function clearDraw(){
   ctx.fillStyle='#000';ctx.fillRect(0,0,240,240);
-  canvasReady=false;sendQueue=[];sending=false;
+  canvasReady=false;sendQueue=[];sending=false;strokeHistory=[];
   sendCmd('DRAWCLEAR');log('Canvas cleared');
 }
 
-// ── Image processing ──────────────────────────────────
+// ── Image ─────────────────────────────────────────────
 const offscreen=document.createElement('canvas');
 offscreen.width=240;offscreen.height=240;
 const octx=offscreen.getContext('2d');
@@ -364,21 +886,17 @@ function buildCache(pixels){
       const i=(y*240+x)*4;
       const r=pixels.data[i],g=pixels.data[i+1],b=pixels.data[i+2];
       const rgb=((r&0xF8)<<8)|((g&0xFC)<<3)|(b>>3);
-      row[6+x*2]=(rgb>>8)&0xFF;
-      row[6+x*2+1]=rgb&0xFF;
+      row[6+x*2]=(rgb>>8)&0xFF;row[6+x*2+1]=rgb&0xFF;
     }
     rows.push(row);
   }
   return rows;
 }
-
 function cacheToStrings(rows){return rows.map(r=>btoa(String.fromCharCode(...r)));}
 function stringsToCache(strs){
   return strs.map(s=>{
-    const bin=atob(s);
-    const arr=new Uint8Array(bin.length);
-    for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
-    return arr;
+    const bin=atob(s);const arr=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);return arr;
   });
 }
 
@@ -389,14 +907,13 @@ function processImage(img){
   octx.drawImage(img,sx,sy,size,size,0,0,240,240);
   imgPixels=octx.getImageData(0,0,240,240);
   imgCached=buildCache(imgPixels);
-  const thumb=offscreen.toDataURL('image/jpeg',0.7);
+  imgThumb=offscreen.toDataURL('image/jpeg',0.6);
   const prev=document.getElementById('imgPreview');
-  prev.src=thumb;prev.style.display='block';
+  prev.src=imgThumb;prev.style.display='block';
   document.getElementById('imgSendBtn').style.display='block';
   document.getElementById('imgSendBtn').disabled=!characteristic;
   document.getElementById('saveLibBtn').style.display='block';
-  log('Image ready — '+img.naturalWidth+'×'+img.naturalHeight);
-  // Scroll to send button
+  log('Image ready — '+img.naturalWidth+'×'+img.naturalHeight,'ok');
   document.getElementById('imgSendBtn').scrollIntoView({behavior:'smooth',block:'center'});
 }
 
@@ -409,8 +926,7 @@ function loadFromFile(e){
 function dragOver(e){e.preventDefault();document.getElementById('dropZone').classList.add('dragover');}
 function dragLeave(e){document.getElementById('dropZone').classList.remove('dragover');}
 function dropImage(e){
-  e.preventDefault();
-  document.getElementById('dropZone').classList.remove('dragover');
+  e.preventDefault();document.getElementById('dropZone').classList.remove('dragover');
   const file=e.dataTransfer.files[0];
   if(file&&file.type.startsWith('image/')){
     const reader=new FileReader();
@@ -419,29 +935,29 @@ function dropImage(e){
   }
   const url=e.dataTransfer.getData('text/uri-list')||e.dataTransfer.getData('text/plain');
   if(url&&url.startsWith('http')){document.getElementById('imgUrl').value=url;loadFromUrl();return;}
-  log('Could not read — try a URL instead');
+  log('Could not read drop','err');
 }
 async function loadFromUrl(){
   let url=document.getElementById('imgUrl').value.trim();
-  if(!url){log('Paste a URL first');return;}
+  if(!url){log('Paste a URL first','err');return;}
   if(url.startsWith('data:')){const img=new Image();img.onload=()=>processImage(img);img.src=url;return;}
-  log('Fetching...');
+  log('Fetching...','info');
   const proxies=[url,'https://corsproxy.io/?'+encodeURIComponent(url),'https://api.allorigins.win/raw?url='+encodeURIComponent(url)];
   for(const attempt of proxies){
     try{
       const res=await fetch(attempt);if(!res.ok)continue;
       const blob=await res.blob();if(!blob.type.startsWith('image/'))continue;
       const reader=new FileReader();
-      reader.onload=ev=>{const img=new Image();img.onload=()=>{processImage(img);log('Loaded!');};img.src=ev.target.result;};
+      reader.onload=ev=>{const img=new Image();img.onload=()=>{processImage(img);log('Loaded!','ok');};img.src=ev.target.result;};
       reader.readAsDataURL(blob);return;
     }catch(e){}
   }
-  log('Could not fetch — try dragging directly');
+  log('Could not fetch','err');
 }
 document.addEventListener('paste',e=>{
   const item=Array.from(e.clipboardData.items).find(i=>i.type.startsWith('image/'));
   if(item){
-    log('Image pasted');
+    log('Image pasted','info');
     const blob=item.getAsFile();
     const reader=new FileReader();
     reader.onload=ev=>{const img=new Image();img.onload=()=>processImage(img);img.src=ev.target.result;};
@@ -449,58 +965,41 @@ document.addEventListener('paste',e=>{
   }
 });
 
-// ── Core image sender — the only place images are sent ─
-// Uses a lock so only ONE send can happen at a time
 async function sendCachedRows(rows){
-  if(!characteristic){log('Not connected');return;}
-  if(isSendingImage){
-    // Cancel current send and wait for it to stop
-    isSendingImage=false;
-    sendQueue=[];sending=false;
-    await sleep(200);
-  }
-  isSendingImage=true;
-
+  if(!characteristic){log('Not connected','err');return;}
+  if(isSendingImage){isSendingImage=false;sendQueue=[];sending=false;await sleep(150);}
+  isSendingImage=true;sendQueue=[];sending=false;
   const prog=document.getElementById('imgProgress');
   prog.style.display='block';prog.value=0;
-
-  // Clear queue and send IMGSTART fresh
-  sendQueue=[];sending=false;
-  await sendCmd('IMGSTART');
-  await sleep(400);
-
-  const passes=[[0,8],[4,8],[2,4],[1,2],[0,1]];
-  let passNum=0;
-  for(const [offset,step] of passes){
-    passNum++;
+  await sendCmd('IMGSTART');await sleep(300);
+  const passes=[[0,4],[2,4],[1,2]];
+  let pn=0;
+  for(const[offset,step]of passes){
+    pn++;
     for(let y=offset;y<=239;y+=step){
-      if(!isSendingImage)return; // cancelled
-      if(!characteristic)return;
+      if(!isSendingImage||!characteristic)return;
       await sendRowData(rows[y]);
-      prog.value=Math.min(99,((passNum-1)*20+(y/240*20))|0);
+      prog.value=Math.min(99,((pn-1)*33+(y/240*33))|0);
     }
   }
-
   if(!isSendingImage)return;
-  await sendRowData(rows[239]);
   await sendCmd('IMGDONE');
-  prog.value=100;
-  log('Done!');
-  isSendingImage=false;
+  prog.value=100;isSendingImage=false;
+  log('Done!','ok');toast('Image sent!');
 }
 
 async function sendRowData(row){
   if(!characteristic)return;
   try{await characteristic.writeValueWithoutResponse(row);}
-  catch(e){await sleep(20);try{await characteristic.writeValueWithoutResponse(row);}catch(e2){}}
-  await sleep(8);
+  catch(e){await sleep(15);try{await characteristic.writeValueWithoutResponse(row);}catch(e2){}}
+  await sleep(6);
 }
 
 async function sendCurrentImage(){
-  if(!imgCached){log('Load an image first');return;}
+  if(!imgCached){log('Load an image first','err');return;}
   document.getElementById('imgSendBtn').disabled=true;
   await sendCachedRows(imgCached);
-  addToHistory(offscreen.toDataURL('image/jpeg',0.5),imgCached);
+  addToHistory(imgThumb,imgCached);
   document.getElementById('imgSendBtn').disabled=false;
 }
 
@@ -512,7 +1011,6 @@ function addToHistory(thumb,rows){
   saveStore('vr_history',history);
   renderHistory();
 }
-
 function renderHistory(){
   const grid=document.getElementById('historyGrid');
   if(history.length===0){grid.innerHTML='<p class="empty-hint">No history yet</p>';return;}
@@ -520,56 +1018,36 @@ function renderHistory(){
   history.forEach((item,i)=>{
     const wrap=document.createElement('div');wrap.className='thumb-wrap';
     const img=document.createElement('img');
-    img.src=item.thumb;img.title='Click to load & send';
-    // Clicking history item loads it into the send image area first
-    img.onclick=()=>loadHistoryItem(item,i);
-    const del=document.createElement('button');
-    del.className='thumb-del';del.textContent='×';
+    img.src=item.thumb;img.title='Load & send';
+    img.onclick=()=>loadHistoryItem(item);
+    const del=document.createElement('button');del.className='thumb-del';del.textContent='×';
     del.onclick=e=>{e.stopPropagation();deleteHistory(i);};
-    wrap.appendChild(img);wrap.appendChild(del);
-    grid.appendChild(wrap);
+    wrap.appendChild(img);wrap.appendChild(del);grid.appendChild(wrap);
   });
 }
-
-function loadHistoryItem(item,i){
-  // Load into send image area
+function loadHistoryItem(item){
   const rows=stringsToCache(item.rows);
-  imgCached=rows;
+  imgCached=rows;imgThumb=item.thumb;
   const prev=document.getElementById('imgPreview');
   prev.src=item.thumb;prev.style.display='block';
   document.getElementById('imgSendBtn').style.display='block';
   document.getElementById('imgSendBtn').disabled=!characteristic;
   document.getElementById('saveLibBtn').style.display='block';
-  // Scroll to send image card
   document.getElementById('imgSendBtn').scrollIntoView({behavior:'smooth',block:'center'});
-  log('History item loaded — press Send to display');
+  log('History loaded — press Send','info');
 }
-
-function deleteHistory(i){
-  history.splice(i,1);
-  saveStore('vr_history',history);
-  renderHistory();
-}
+function deleteHistory(i){history.splice(i,1);saveStore('vr_history',history);renderHistory();}
+function clearHistory(){history=[];saveStore('vr_history',history);renderHistory();toast('History cleared');}
 
 // ── Library ───────────────────────────────────────────
 function saveToLibrary(){
-  if(!imgCached){log('Load an image first');return;}
-  if(library.length>=30){log('Library full (30) — delete some first');return;}
-  const entry={
-    thumb:document.getElementById('imgPreview').src,
-    rows:cacheToStrings(imgCached),
-    ts:Date.now()
-  };
-  library.push(entry);
-  saveStore('vr_library',library);
-  renderLibrary();
-  log('Saved to library ('+library.length+'/30)');
-  if(characteristic){
-    document.getElementById('slideBtn').disabled=false;
-    document.getElementById('shuffleBtn').disabled=false;
-  }
+  if(!imgCached){log('Load an image first','err');return;}
+  if(library.length>=30){log('Library full','err');return;}
+  library.push({thumb:imgThumb,rows:cacheToStrings(imgCached),ts:Date.now()});
+  saveStore('vr_library',library);renderLibrary();
+  log('Saved ('+library.length+'/30)','ok');toast('Saved to library!');
+  if(characteristic){document.getElementById('slideBtn').disabled=false;document.getElementById('shuffleBtn').disabled=false;}
 }
-
 function renderLibrary(){
   const grid=document.getElementById('libraryGrid');
   if(library.length===0){grid.innerHTML='<p class="empty-hint">Save images to build your library</p>';return;}
@@ -577,105 +1055,69 @@ function renderLibrary(){
   library.forEach((item,i)=>{
     const wrap=document.createElement('div');wrap.className='thumb-wrap';
     const img=document.createElement('img');
-    img.src=item.thumb;img.title='Click to send';
-    img.id='libthumb_'+i;
+    img.src=item.thumb;img.title='Send';img.id='libthumb_'+i;
     img.onclick=()=>sendLibraryItem(i);
-    const del=document.createElement('button');
-    del.className='thumb-del';del.textContent='×';
+    const del=document.createElement('button');del.className='thumb-del';del.textContent='×';
     del.onclick=e=>{e.stopPropagation();deleteLibrary(i);};
-    wrap.appendChild(img);wrap.appendChild(del);
-    grid.appendChild(wrap);
+    wrap.appendChild(img);wrap.appendChild(del);grid.appendChild(wrap);
   });
-  if(characteristic){
-    document.getElementById('slideBtn').disabled=false;
-    document.getElementById('shuffleBtn').disabled=false;
-  }
+  if(characteristic){document.getElementById('slideBtn').disabled=false;document.getElementById('shuffleBtn').disabled=false;}
 }
-
-function deleteLibrary(i){
-  library.splice(i,1);
-  saveStore('vr_library',library);
-  renderLibrary();
-  if(library.length===0)stopSlideshow();
-  log('Deleted');
-}
-
+function deleteLibrary(i){library.splice(i,1);saveStore('vr_library',library);renderLibrary();if(library.length===0)stopSlideshow();}
+function clearLibrary(){if(confirm('Clear entire library?')){library=[];saveStore('vr_library',library);renderLibrary();stopSlideshow();toast('Library cleared');}}
 async function sendLibraryItem(i){
-  if(!characteristic){log('Not connected');return;}
+  if(!characteristic){log('Not connected','err');return;}
   setActiveThumb('libthumb_'+i);
-  log('Sending library image '+(i+1)+'/'+library.length+'...');
+  log('Sending library '+(i+1)+'...','info');
   const rows=stringsToCache(library[i].rows);
   await sendCachedRows(rows);
   addToHistory(library[i].thumb,rows);
 }
-
 function setActiveThumb(id){
   document.querySelectorAll('.active-thumb').forEach(el=>el.classList.remove('active-thumb'));
   const el=document.getElementById(id);if(el)el.classList.add('active-thumb');
 }
 
 // ── Slideshow ─────────────────────────────────────────
-function toggleSlideshow(){
-  if(slideshowTimer){stopSlideshow();}
-  else{startSlideshow();}
-}
-
+function toggleSlideshow(){if(slideshowTimer){stopSlideshow();}else{startSlideshow();}}
 async function startSlideshow(){
-  if(library.length===0){log('Library is empty');return;}
-  if(!characteristic){log('Not connected');return;}
-  stopSlideshow(); // make sure any previous is cleared
-  const interval=parseInt(document.getElementById('slideInterval').value);
-  log('Slideshow started — '+library.length+' images every '+(interval/1000)+'s');
+  if(library.length===0){log('Library empty','err');return;}
+  if(!characteristic){log('Not connected','err');return;}
+  stopSlideshow();
   const btn=document.getElementById('slideBtn');
-  btn.textContent='⏹ Stop';btn.classList.add('running');
+  btn.textContent='⏹ Stop';btn.classList.add('btn-danger');btn.classList.remove('btn-secondary');
   slideshowIndex=0;
-
-  // Send first image immediately
+  log('Slideshow started','ok');toast('Slideshow started!');
+  runSlide();
+}
+async function runSlide(){
+  if(slideshowTimer===null&&slideshowTimer!==0)return;
+  if(!characteristic){stopSlideshow();return;}
+  const interval=parseInt(document.getElementById('slideInterval').value);
   await sendSlide(slideshowIndex);
-
-  // Then set interval for subsequent images
-  // Use a wrapper that awaits each send before scheduling next
-  const runNext=async()=>{
-    if(!slideshowTimer)return; // stopped
-    slideshowIndex=(slideshowIndex+1)%library.length;
-    await sendSlide(slideshowIndex);
-    if(slideshowTimer){
-      slideshowTimer=setTimeout(runNext,interval);
-    }
-  };
-  slideshowTimer=setTimeout(runNext,interval);
+  slideshowIndex=(slideshowIndex+1)%library.length;
+  slideshowTimer=setTimeout(runSlide,interval);
 }
-
 function stopSlideshow(){
-  if(slideshowTimer){clearTimeout(slideshowTimer);slideshowTimer=null;}
-  isSendingImage=false;
-  sendQueue=[];sending=false;
+  if(slideshowTimer)clearTimeout(slideshowTimer);
+  slideshowTimer=null;isSendingImage=false;sendQueue=[];sending=false;
   const btn=document.getElementById('slideBtn');
-  btn.textContent='▶ Slideshow';btn.classList.remove('running');
+  btn.textContent='▶ Slideshow';btn.classList.remove('btn-danger');btn.classList.add('btn-secondary');
 }
-
-async function sendSlide(index){
-  if(!characteristic||!library[index])return;
-  log('Slide '+(index+1)+'/'+library.length);
-  setActiveThumb('libthumb_'+index);
-  const rows=stringsToCache(library[index].rows);
-  await sendCachedRows(rows);
+async function sendSlide(i){
+  if(!characteristic||!library[i])return;
+  log('Slide '+(i+1)+'/'+library.length,'info');
+  setActiveThumb('libthumb_'+i);
+  await sendCachedRows(stringsToCache(library[i].rows));
 }
-
 function shuffleLibrary(){
-  for(let i=library.length-1;i>0;i--){
-    const j=Math.floor(Math.random()*(i+1));
-    [library[i],library[j]]=[library[j],library[i]];
-  }
-  saveStore('vr_library',library);
-  renderLibrary();
-  log('Shuffled!');
+  for(let i=library.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[library[i],library[j]]=[library[j],library[i]];}
+  saveStore('vr_library',library);renderLibrary();toast('Shuffled!');
 }
 
 // ── Init ──────────────────────────────────────────────
-renderHistory();
-renderLibrary();
-
+renderHistory();renderLibrary();
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+</script>
 </body>
 </html>
