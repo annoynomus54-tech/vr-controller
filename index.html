@@ -180,22 +180,28 @@ let brushSize=3;
 let drawing=false;
 let lastX=0,lastY=0;
 let canvasReady=false;
-let imgPixels=null;        // current ImageData
-let imgCached=null;        // current pre-built row cache (array of Uint8Array)
+let imgPixels=null;
+let imgCached=null;
+let imgThumb=null; // saved immediately at processImage time
 let sendQueue=[];
 let sending=false;
 let slideshowTimer=null;
 let slideshowIndex=0;
+let isSendingImage=false;
 
-// ── Storage helpers ───────────────────────────────────
-// History: array of {thumb, rows} — rows is array of base64 strings
-// Library: same structure
+function loadStore(key){try{return JSON.parse(localStorage.getItem(key)||'[]');}catch{return[];}}
+function saveStore(key,val){
+  try{localStorage.setItem(key,JSON.stringify(val));}
+  catch(e){
+    log('Storage full — trimming...');
+    if(key==='vr_history')val=val.slice(0,5);
+    if(key==='vr_library')val=val.slice(0,15);
+    try{localStorage.setItem(key,JSON.stringify(val));}catch(e2){log('Could not save');}
+  }
+}
 
-function loadStore(key){ try{return JSON.parse(localStorage.getItem(key)||'[]');}catch{return[];} }
-function saveStore(key,val){ try{localStorage.setItem(key,JSON.stringify(val));}catch(e){log('Storage full — delete some images');} }
-
-let history = loadStore('vr_history');
-let library  = loadStore('vr_library');
+let history=loadStore('vr_history');
+let library=loadStore('vr_library');
 
 function log(msg){const el=document.getElementById('log');el.innerHTML+=`<div>> ${msg}</div>`;el.scrollTop=el.scrollHeight;}
 
@@ -230,12 +236,12 @@ async function connect(){
     log('Connected!');
     device.addEventListener('gattserverdisconnected',()=>{
       characteristic=null;canvasReady=false;
-      setConnected(false);stopSlideshow();log('Disconnected');
+      setConnected(false);stopSlideshow();
+      isSendingImage=false;log('Disconnected');
     });
   }catch(e){log('Error: '+e.message);}
 }
 
-// ── Queue ─────────────────────────────────────────────
 async function processQueue(){
   if(sending||sendQueue.length===0)return;
   sending=true;
@@ -260,21 +266,14 @@ function queue(item){sendQueue.push(item);processQueue();}
 async function sendCmd(cmd){
   if(!characteristic)return;
   sendQueue=[];sending=false;
-  try{
-    await characteristic.writeValue(new TextEncoder().encode(cmd+'\n'));
-    log('Sent: '+cmd);
-  }catch(e){log('Error: '+e.message);}
+  await sleep(30);
+  try{await characteristic.writeValue(new TextEncoder().encode(cmd+'\n'));}
+  catch(e){log('Cmd error: '+e.message);}
 }
 
-function sendText(){
-  const msg=document.getElementById('msgInput').value.trim();
-  if(msg)sendCmd('TEXT:'+msg);
-}
-document.getElementById('msgInput').addEventListener('keydown',e=>{
-  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendText();}
-});
+function sendText(){const msg=document.getElementById('msgInput').value.trim();if(msg)sendCmd('TEXT:'+msg);}
+document.getElementById('msgInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendText();}});
 
-// ── Draw canvas ───────────────────────────────────────
 const canvas=document.getElementById('drawCanvas');
 const ctx=canvas.getContext('2d');
 ctx.fillStyle='#000';ctx.fillRect(0,0,240,240);
@@ -337,12 +336,10 @@ function clearDraw(){
   sendCmd('DRAWCLEAR');log('Canvas cleared');
 }
 
-// ── Image processing ──────────────────────────────────
 const offscreen=document.createElement('canvas');
 offscreen.width=240;offscreen.height=240;
 const octx=offscreen.getContext('2d');
 
-// Build row cache from ImageData — array of Uint8Array ready to send
 function buildCache(pixels){
   const rows=[];
   for(let y=0;y<=239;y++){
@@ -361,11 +358,7 @@ function buildCache(pixels){
   return rows;
 }
 
-// Convert cache to storable base64 strings
-function cacheToStrings(rows){
-  return rows.map(r=>btoa(String.fromCharCode(...r)));
-}
-// Convert back
+function cacheToStrings(rows){return rows.map(r=>btoa(String.fromCharCode(...r)));}
 function stringsToCache(strs){
   return strs.map(s=>{
     const bin=atob(s);
@@ -382,13 +375,17 @@ function processImage(img){
   octx.drawImage(img,sx,sy,size,size,0,0,240,240);
   imgPixels=octx.getImageData(0,0,240,240);
   imgCached=buildCache(imgPixels);
+
+  // ── Save thumb RIGHT NOW before canvas can be overwritten ──
+  imgThumb=offscreen.toDataURL('image/jpeg',0.6);
+
   const prev=document.getElementById('imgPreview');
-  prev.src=offscreen.toDataURL('image/jpeg',0.7);
-  prev.style.display='block';
+  prev.src=imgThumb;prev.style.display='block';
   document.getElementById('imgSendBtn').style.display='block';
   document.getElementById('imgSendBtn').disabled=!characteristic;
   document.getElementById('saveLibBtn').style.display='block';
   log('Image ready — '+img.naturalWidth+'×'+img.naturalHeight);
+  document.getElementById('imgSendBtn').scrollIntoView({behavior:'smooth',block:'center'});
 }
 
 function loadFromFile(e){
@@ -397,7 +394,6 @@ function loadFromFile(e){
   reader.onload=ev=>{const img=new Image();img.onload=()=>processImage(img);img.src=ev.target.result;};
   reader.readAsDataURL(file);
 }
-
 function dragOver(e){e.preventDefault();document.getElementById('dropZone').classList.add('dragover');}
 function dragLeave(e){document.getElementById('dropZone').classList.remove('dragover');}
 function dropImage(e){
@@ -405,20 +401,14 @@ function dropImage(e){
   document.getElementById('dropZone').classList.remove('dragover');
   const file=e.dataTransfer.files[0];
   if(file&&file.type.startsWith('image/')){
-    log('Image dropped from Finder');
     const reader=new FileReader();
     reader.onload=ev=>{const img=new Image();img.onload=()=>processImage(img);img.src=ev.target.result;};
     reader.readAsDataURL(file);return;
   }
   const url=e.dataTransfer.getData('text/uri-list')||e.dataTransfer.getData('text/plain');
-  if(url&&url.startsWith('http')){
-    log('Dragged from browser, fetching...');
-    document.getElementById('imgUrl').value=url;
-    loadFromUrl();return;
-  }
+  if(url&&url.startsWith('http')){document.getElementById('imgUrl').value=url;loadFromUrl();return;}
   log('Could not read — try a URL instead');
 }
-
 async function loadFromUrl(){
   let url=document.getElementById('imgUrl').value.trim();
   if(!url){log('Paste a URL first');return;}
@@ -430,13 +420,12 @@ async function loadFromUrl(){
       const res=await fetch(attempt);if(!res.ok)continue;
       const blob=await res.blob();if(!blob.type.startsWith('image/'))continue;
       const reader=new FileReader();
-      reader.onload=ev=>{const img=new Image();img.onload=()=>{processImage(img);log('Loaded from URL!');};img.src=ev.target.result;};
+      reader.onload=ev=>{const img=new Image();img.onload=()=>{processImage(img);log('Loaded!');};img.src=ev.target.result;};
       reader.readAsDataURL(blob);return;
     }catch(e){}
   }
   log('Could not fetch — try dragging directly');
 }
-
 document.addEventListener('paste',e=>{
   const item=Array.from(e.clipboardData.items).find(i=>i.type.startsWith('image/'));
   if(item){
@@ -448,49 +437,77 @@ document.addEventListener('paste',e=>{
   }
 });
 
-// ── Send image from cache ─────────────────────────────
+// ── Core sender — lock prevents overlap ───────────────
 async function sendCachedRows(rows){
-  if(!characteristic||!rows)return;
+  if(!characteristic){log('Not connected');return;}
+
+  // Cancel any ongoing send cleanly
+  if(isSendingImage){
+    isSendingImage=false;
+    sendQueue=[];sending=false;
+    await sleep(150);
+  }
+  isSendingImage=true;
+  sendQueue=[];sending=false;
+
   const prog=document.getElementById('imgProgress');
   prog.style.display='block';prog.value=0;
-  await sendCmd('IMGSTART');
-  await sleep(400);
 
-  // Progressive passes
-  const passes=[[0,8],[4,8],[2,4],[1,2],[0,1]];
-  let passNum=0;
-  for(const [offset,step] of passes){
-    passNum++;
-    log('Pass '+passNum+'/5...');
-    for(let y=offset;y<=239;y+=step){
-      await sendRowData(rows[y]);
-      prog.value=Math.min(99,(y/240*20+passNum*15)|0);
-    }
+  await sendCmd('IMGSTART');
+  await sleep(300);
+
+  // ── 3 passes only — much faster, no redundant rows ──
+  // Pass 1: every 4th row — instant rough preview
+  log('Pass 1/3...');
+  for(let y=0;y<=239;y+=4){
+    if(!isSendingImage||!characteristic)return;
+    await sendRowData(rows[y]);
+    prog.value=(y/240*33)|0;
   }
-  await sendRowData(rows[239]);
+
+  // Pass 2: rows 2,6,10... (fills gaps)
+  log('Pass 2/3...');
+  for(let y=2;y<=239;y+=4){
+    if(!isSendingImage||!characteristic)return;
+    await sendRowData(rows[y]);
+    prog.value=33+((y/240*33)|0);
+  }
+
+  // Pass 3: all odd rows — full resolution
+  log('Pass 3/3...');
+  for(let y=1;y<=239;y+=2){
+    if(!isSendingImage||!characteristic)return;
+    await sendRowData(rows[y]);
+    prog.value=66+((y/240*34)|0);
+  }
+
+  if(!isSendingImage)return;
   await sendCmd('IMGDONE');
   prog.value=100;
-  log('Done!');
+  isSendingImage=false;
+  log('✓ Done!');
 }
 
 async function sendRowData(row){
+  if(!characteristic)return;
   try{await characteristic.writeValueWithoutResponse(row);}
-  catch(e){await sleep(20);try{await characteristic.writeValueWithoutResponse(row);}catch(e2){}}
-  await sleep(8);
+  catch(e){await sleep(15);try{await characteristic.writeValueWithoutResponse(row);}catch(e2){}}
+  await sleep(6); // reduced from 8ms
 }
 
 async function sendCurrentImage(){
-  if(!imgCached)return;
+  if(!imgCached){log('Load an image first');return;}
   document.getElementById('imgSendBtn').disabled=true;
   await sendCachedRows(imgCached);
-  // Add to history
-  addToHistory(offscreen.toDataURL('image/jpeg',0.5),imgCached);
+  // Use saved thumb — not offscreen which may have changed
+  addToHistory(imgThumb,imgCached);
   document.getElementById('imgSendBtn').disabled=false;
 }
 
 // ── History ───────────────────────────────────────────
 function addToHistory(thumb,rows){
-  const entry={thumb, rows:cacheToStrings(rows), ts:Date.now()};
+  // thumb is already saved as a string — store it directly
+  const entry={thumb,rows:cacheToStrings(rows),ts:Date.now()};
   history.unshift(entry);
   if(history.length>10)history.pop();
   saveStore('vr_history',history);
@@ -502,18 +519,31 @@ function renderHistory(){
   if(history.length===0){grid.innerHTML='<p class="empty-hint">No history yet</p>';return;}
   grid.innerHTML='';
   history.forEach((item,i)=>{
-    const wrap=document.createElement('div');
-    wrap.className='thumb-wrap';
+    const wrap=document.createElement('div');wrap.className='thumb-wrap';
     const img=document.createElement('img');
+    // thumb is stored as data URL — always valid
     img.src=item.thumb;
-    img.title='Click to resend';
-    img.onclick=()=>resendFromStore(item.rows,'history',i);
+    img.title='Click to load & send';
+    img.onclick=()=>loadHistoryItem(item);
     const del=document.createElement('button');
     del.className='thumb-del';del.textContent='×';
     del.onclick=e=>{e.stopPropagation();deleteHistory(i);};
     wrap.appendChild(img);wrap.appendChild(del);
     grid.appendChild(wrap);
   });
+}
+
+function loadHistoryItem(item){
+  const rows=stringsToCache(item.rows);
+  imgCached=rows;
+  imgThumb=item.thumb; // restore saved thumb
+  const prev=document.getElementById('imgPreview');
+  prev.src=item.thumb;prev.style.display='block';
+  document.getElementById('imgSendBtn').style.display='block';
+  document.getElementById('imgSendBtn').disabled=!characteristic;
+  document.getElementById('saveLibBtn').style.display='block';
+  document.getElementById('imgSendBtn').scrollIntoView({behavior:'smooth',block:'center'});
+  log('History item loaded — press Send to display');
 }
 
 function deleteHistory(i){
@@ -525,8 +555,8 @@ function deleteHistory(i){
 // ── Library ───────────────────────────────────────────
 function saveToLibrary(){
   if(!imgCached){log('Load an image first');return;}
-  if(library.length>=30){log('Library full (30 max) — delete some first');return;}
-  const entry={thumb:offscreen.toDataURL('image/jpeg',0.5),rows:cacheToStrings(imgCached),ts:Date.now()};
+  if(library.length>=30){log('Library full — delete some first');return;}
+  const entry={thumb:imgThumb,rows:cacheToStrings(imgCached),ts:Date.now()};
   library.push(entry);
   saveStore('vr_library',library);
   renderLibrary();
@@ -542,19 +572,21 @@ function renderLibrary(){
   if(library.length===0){grid.innerHTML='<p class="empty-hint">Save images to build your library</p>';return;}
   grid.innerHTML='';
   library.forEach((item,i)=>{
-    const wrap=document.createElement('div');
-    wrap.className='thumb-wrap';
+    const wrap=document.createElement('div');wrap.className='thumb-wrap';
     const img=document.createElement('img');
-    img.src=item.thumb;
-    img.title='Click to send';
+    img.src=item.thumb;img.title='Click to send';
     img.id='libthumb_'+i;
-    img.onclick=()=>resendFromStore(item.rows,'library',i);
+    img.onclick=()=>sendLibraryItem(i);
     const del=document.createElement('button');
     del.className='thumb-del';del.textContent='×';
     del.onclick=e=>{e.stopPropagation();deleteLibrary(i);};
     wrap.appendChild(img);wrap.appendChild(del);
     grid.appendChild(wrap);
   });
+  if(characteristic){
+    document.getElementById('slideBtn').disabled=false;
+    document.getElementById('shuffleBtn').disabled=false;
+  }
 }
 
 function deleteLibrary(i){
@@ -562,61 +594,62 @@ function deleteLibrary(i){
   saveStore('vr_library',library);
   renderLibrary();
   if(library.length===0)stopSlideshow();
-  log('Deleted from library');
+  log('Deleted');
 }
 
-async function resendFromStore(rowStrings,from,index){
+async function sendLibraryItem(i){
   if(!characteristic){log('Not connected');return;}
-  // Highlight active thumb
-  document.querySelectorAll('.active-thumb').forEach(el=>el.classList.remove('active-thumb'));
-  const thumbId=from==='library'?'libthumb_'+index:null;
-  if(thumbId){const el=document.getElementById(thumbId);if(el)el.classList.add('active-thumb');}
-  log('Resending from '+from+'...');
-  const rows=stringsToCache(rowStrings);
-  document.getElementById('imgSendBtn').disabled=true;
+  setActiveThumb('libthumb_'+i);
+  log('Sending library item '+(i+1)+'...');
+  const rows=stringsToCache(library[i].rows);
   await sendCachedRows(rows);
-  document.getElementById('imgSendBtn').disabled=false;
-  // Add to history if from library
-  if(from==='library'){
-    const item=library[index];
-    addToHistory(item.thumb,rows);
-  }
+  addToHistory(library[i].thumb,rows);
 }
 
-// ── Slideshow ─────────────────────────────────────────
+function setActiveThumb(id){
+  document.querySelectorAll('.active-thumb').forEach(el=>el.classList.remove('active-thumb'));
+  const el=document.getElementById(id);if(el)el.classList.add('active-thumb');
+}
+
+// ── Slideshow — chained timeouts, never overlaps ──────
 function toggleSlideshow(){
-  if(slideshowTimer){stopSlideshow();}
-  else{startSlideshow();}
+  if(slideshowTimer){stopSlideshow();}else{startSlideshow();}
 }
 
-function startSlideshow(){
+async function startSlideshow(){
   if(library.length===0){log('Library is empty');return;}
   if(!characteristic){log('Not connected');return;}
-  const interval=parseInt(document.getElementById('slideInterval').value);
-  log('Slideshow started ('+library.length+' images, every '+(interval/1000)+'s)');
+  stopSlideshow();
   const btn=document.getElementById('slideBtn');
   btn.textContent='⏹ Stop';btn.classList.add('running');
   slideshowIndex=0;
-  sendSlide(slideshowIndex);
-  slideshowTimer=setInterval(()=>{
-    slideshowIndex=(slideshowIndex+1)%library.length;
-    sendSlide(slideshowIndex);
-  },interval);
+  log('Slideshow started — '+library.length+' images');
+  runSlide();
+}
+
+async function runSlide(){
+  if(!slideshowTimer&&slideshowTimer!==0)return; // stopped
+  if(!characteristic){stopSlideshow();return;}
+  const interval=parseInt(document.getElementById('slideInterval').value);
+  await sendSlide(slideshowIndex);
+  slideshowIndex=(slideshowIndex+1)%library.length;
+  // Only schedule next after current fully finishes
+  slideshowTimer=setTimeout(runSlide,interval);
 }
 
 function stopSlideshow(){
-  if(slideshowTimer){clearInterval(slideshowTimer);slideshowTimer=null;}
+  if(slideshowTimer){clearTimeout(slideshowTimer);}
+  slideshowTimer=null;
+  isSendingImage=false;
+  sendQueue=[];sending=false;
   const btn=document.getElementById('slideBtn');
   btn.textContent='▶ Slideshow';btn.classList.remove('running');
-  log('Slideshow stopped');
 }
 
 async function sendSlide(index){
   if(!characteristic||!library[index])return;
   log('Slide '+(index+1)+'/'+library.length);
-  document.querySelectorAll('.active-thumb').forEach(el=>el.classList.remove('active-thumb'));
-  const el=document.getElementById('libthumb_'+index);
-  if(el)el.classList.add('active-thumb');
+  setActiveThumb('libthumb_'+index);
   const rows=stringsToCache(library[index].rows);
   await sendCachedRows(rows);
 }
@@ -628,14 +661,11 @@ function shuffleLibrary(){
   }
   saveStore('vr_library',library);
   renderLibrary();
-  log('Library shuffled!');
+  log('Shuffled!');
 }
 
-// ── Init ──────────────────────────────────────────────
 renderHistory();
 renderLibrary();
-
-function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
-</script>
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}</script>
 </body>
 </html>
