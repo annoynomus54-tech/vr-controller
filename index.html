@@ -182,21 +182,23 @@ let lastX=0,lastY=0;
 let canvasReady=false;
 let imgPixels=null;
 let imgCached=null;
-let imgThumb=null; // saved immediately at processImage time
 let sendQueue=[];
 let sending=false;
 let slideshowTimer=null;
 let slideshowIndex=0;
-let isSendingImage=false;
+let isSendingImage=false; // global lock — only one image sends at a time
 
+// ── Storage ───────────────────────────────────────────
+// Use localStorage for persistence across reloads
 function loadStore(key){try{return JSON.parse(localStorage.getItem(key)||'[]');}catch{return[];}}
 function saveStore(key,val){
   try{localStorage.setItem(key,JSON.stringify(val));}
   catch(e){
-    log('Storage full — trimming...');
-    if(key==='vr_history')val=val.slice(0,5);
-    if(key==='vr_library')val=val.slice(0,15);
-    try{localStorage.setItem(key,JSON.stringify(val));}catch(e2){log('Could not save');}
+    log('Storage full — deleting oldest items...');
+    // If storage is full, trim and retry
+    if(key==='vr_history'){val=val.slice(0,5);}
+    if(key==='vr_library'){val=val.slice(0,15);}
+    try{localStorage.setItem(key,JSON.stringify(val));}catch(e2){log('Could not save — storage full');}
   }
 }
 
@@ -237,11 +239,13 @@ async function connect(){
     device.addEventListener('gattserverdisconnected',()=>{
       characteristic=null;canvasReady=false;
       setConnected(false);stopSlideshow();
-      isSendingImage=false;log('Disconnected');
+      isSendingImage=false;
+      log('Disconnected');
     });
   }catch(e){log('Error: '+e.message);}
 }
 
+// ── Queue ─────────────────────────────────────────────
 async function processQueue(){
   if(sending||sendQueue.length===0)return;
   sending=true;
@@ -265,15 +269,24 @@ function queue(item){sendQueue.push(item);processQueue();}
 
 async function sendCmd(cmd){
   if(!characteristic)return;
-  sendQueue=[];sending=false;
-  await sleep(30);
-  try{await characteristic.writeValue(new TextEncoder().encode(cmd+'\n'));}
-  catch(e){log('Cmd error: '+e.message);}
+  // Always flush queue before a command
+  sendQueue=[];
+  sending=false;
+  await sleep(30); // let any in-flight writes finish
+  try{
+    await characteristic.writeValue(new TextEncoder().encode(cmd+'\n'));
+  }catch(e){log('Error: '+e.message);}
 }
 
-function sendText(){const msg=document.getElementById('msgInput').value.trim();if(msg)sendCmd('TEXT:'+msg);}
-document.getElementById('msgInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendText();}});
+function sendText(){
+  const msg=document.getElementById('msgInput').value.trim();
+  if(msg)sendCmd('TEXT:'+msg);
+}
+document.getElementById('msgInput').addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendText();}
+});
 
+// ── Draw canvas ───────────────────────────────────────
 const canvas=document.getElementById('drawCanvas');
 const ctx=canvas.getContext('2d');
 ctx.fillStyle='#000';ctx.fillRect(0,0,240,240);
@@ -336,6 +349,7 @@ function clearDraw(){
   sendCmd('DRAWCLEAR');log('Canvas cleared');
 }
 
+// ── Image processing ──────────────────────────────────
 const offscreen=document.createElement('canvas');
 offscreen.width=240;offscreen.height=240;
 const octx=offscreen.getContext('2d');
@@ -375,16 +389,14 @@ function processImage(img){
   octx.drawImage(img,sx,sy,size,size,0,0,240,240);
   imgPixels=octx.getImageData(0,0,240,240);
   imgCached=buildCache(imgPixels);
-
-  // ── Save thumb RIGHT NOW before canvas can be overwritten ──
-  imgThumb=offscreen.toDataURL('image/jpeg',0.6);
-
+  const thumb=offscreen.toDataURL('image/jpeg',0.7);
   const prev=document.getElementById('imgPreview');
-  prev.src=imgThumb;prev.style.display='block';
+  prev.src=thumb;prev.style.display='block';
   document.getElementById('imgSendBtn').style.display='block';
   document.getElementById('imgSendBtn').disabled=!characteristic;
   document.getElementById('saveLibBtn').style.display='block';
   log('Image ready — '+img.naturalWidth+'×'+img.naturalHeight);
+  // Scroll to send button
   document.getElementById('imgSendBtn').scrollIntoView({behavior:'smooth',block:'center'});
 }
 
@@ -437,76 +449,63 @@ document.addEventListener('paste',e=>{
   }
 });
 
-// ── Core sender — lock prevents overlap ───────────────
+// ── Core image sender — the only place images are sent ─
+// Uses a lock so only ONE send can happen at a time
 async function sendCachedRows(rows){
   if(!characteristic){log('Not connected');return;}
-
-  // Cancel any ongoing send cleanly
   if(isSendingImage){
+    // Cancel current send and wait for it to stop
     isSendingImage=false;
     sendQueue=[];sending=false;
-    await sleep(150);
+    await sleep(200);
   }
   isSendingImage=true;
-  sendQueue=[];sending=false;
 
   const prog=document.getElementById('imgProgress');
   prog.style.display='block';prog.value=0;
 
+  // Clear queue and send IMGSTART fresh
+  sendQueue=[];sending=false;
   await sendCmd('IMGSTART');
-  await sleep(300);
+  await sleep(400);
 
-  // ── 3 passes only — much faster, no redundant rows ──
-  // Pass 1: every 4th row — instant rough preview
-  log('Pass 1/3...');
-  for(let y=0;y<=239;y+=4){
-    if(!isSendingImage||!characteristic)return;
-    await sendRowData(rows[y]);
-    prog.value=(y/240*33)|0;
-  }
-
-  // Pass 2: rows 2,6,10... (fills gaps)
-  log('Pass 2/3...');
-  for(let y=2;y<=239;y+=4){
-    if(!isSendingImage||!characteristic)return;
-    await sendRowData(rows[y]);
-    prog.value=33+((y/240*33)|0);
-  }
-
-  // Pass 3: all odd rows — full resolution
-  log('Pass 3/3...');
-  for(let y=1;y<=239;y+=2){
-    if(!isSendingImage||!characteristic)return;
-    await sendRowData(rows[y]);
-    prog.value=66+((y/240*34)|0);
+  const passes=[[0,8],[4,8],[2,4],[1,2],[0,1]];
+  let passNum=0;
+  for(const [offset,step] of passes){
+    passNum++;
+    for(let y=offset;y<=239;y+=step){
+      if(!isSendingImage)return; // cancelled
+      if(!characteristic)return;
+      await sendRowData(rows[y]);
+      prog.value=Math.min(99,((passNum-1)*20+(y/240*20))|0);
+    }
   }
 
   if(!isSendingImage)return;
+  await sendRowData(rows[239]);
   await sendCmd('IMGDONE');
   prog.value=100;
+  log('Done!');
   isSendingImage=false;
-  log('✓ Done!');
 }
 
 async function sendRowData(row){
   if(!characteristic)return;
   try{await characteristic.writeValueWithoutResponse(row);}
-  catch(e){await sleep(15);try{await characteristic.writeValueWithoutResponse(row);}catch(e2){}}
-  await sleep(6); // reduced from 8ms
+  catch(e){await sleep(20);try{await characteristic.writeValueWithoutResponse(row);}catch(e2){}}
+  await sleep(8);
 }
 
 async function sendCurrentImage(){
   if(!imgCached){log('Load an image first');return;}
   document.getElementById('imgSendBtn').disabled=true;
   await sendCachedRows(imgCached);
-  // Use saved thumb — not offscreen which may have changed
-  addToHistory(imgThumb,imgCached);
+  addToHistory(offscreen.toDataURL('image/jpeg',0.5),imgCached);
   document.getElementById('imgSendBtn').disabled=false;
 }
 
 // ── History ───────────────────────────────────────────
 function addToHistory(thumb,rows){
-  // thumb is already saved as a string — store it directly
   const entry={thumb,rows:cacheToStrings(rows),ts:Date.now()};
   history.unshift(entry);
   if(history.length>10)history.pop();
@@ -521,10 +520,9 @@ function renderHistory(){
   history.forEach((item,i)=>{
     const wrap=document.createElement('div');wrap.className='thumb-wrap';
     const img=document.createElement('img');
-    // thumb is stored as data URL — always valid
-    img.src=item.thumb;
-    img.title='Click to load & send';
-    img.onclick=()=>loadHistoryItem(item);
+    img.src=item.thumb;img.title='Click to load & send';
+    // Clicking history item loads it into the send image area first
+    img.onclick=()=>loadHistoryItem(item,i);
     const del=document.createElement('button');
     del.className='thumb-del';del.textContent='×';
     del.onclick=e=>{e.stopPropagation();deleteHistory(i);};
@@ -533,15 +531,16 @@ function renderHistory(){
   });
 }
 
-function loadHistoryItem(item){
+function loadHistoryItem(item,i){
+  // Load into send image area
   const rows=stringsToCache(item.rows);
   imgCached=rows;
-  imgThumb=item.thumb; // restore saved thumb
   const prev=document.getElementById('imgPreview');
   prev.src=item.thumb;prev.style.display='block';
   document.getElementById('imgSendBtn').style.display='block';
   document.getElementById('imgSendBtn').disabled=!characteristic;
   document.getElementById('saveLibBtn').style.display='block';
+  // Scroll to send image card
   document.getElementById('imgSendBtn').scrollIntoView({behavior:'smooth',block:'center'});
   log('History item loaded — press Send to display');
 }
@@ -555,8 +554,12 @@ function deleteHistory(i){
 // ── Library ───────────────────────────────────────────
 function saveToLibrary(){
   if(!imgCached){log('Load an image first');return;}
-  if(library.length>=30){log('Library full — delete some first');return;}
-  const entry={thumb:imgThumb,rows:cacheToStrings(imgCached),ts:Date.now()};
+  if(library.length>=30){log('Library full (30) — delete some first');return;}
+  const entry={
+    thumb:document.getElementById('imgPreview').src,
+    rows:cacheToStrings(imgCached),
+    ts:Date.now()
+  };
   library.push(entry);
   saveStore('vr_library',library);
   renderLibrary();
@@ -600,7 +603,7 @@ function deleteLibrary(i){
 async function sendLibraryItem(i){
   if(!characteristic){log('Not connected');return;}
   setActiveThumb('libthumb_'+i);
-  log('Sending library item '+(i+1)+'...');
+  log('Sending library image '+(i+1)+'/'+library.length+'...');
   const rows=stringsToCache(library[i].rows);
   await sendCachedRows(rows);
   addToHistory(library[i].thumb,rows);
@@ -611,35 +614,40 @@ function setActiveThumb(id){
   const el=document.getElementById(id);if(el)el.classList.add('active-thumb');
 }
 
-// ── Slideshow — chained timeouts, never overlaps ──────
+// ── Slideshow ─────────────────────────────────────────
 function toggleSlideshow(){
-  if(slideshowTimer){stopSlideshow();}else{startSlideshow();}
+  if(slideshowTimer){stopSlideshow();}
+  else{startSlideshow();}
 }
 
 async function startSlideshow(){
   if(library.length===0){log('Library is empty');return;}
   if(!characteristic){log('Not connected');return;}
-  stopSlideshow();
+  stopSlideshow(); // make sure any previous is cleared
+  const interval=parseInt(document.getElementById('slideInterval').value);
+  log('Slideshow started — '+library.length+' images every '+(interval/1000)+'s');
   const btn=document.getElementById('slideBtn');
   btn.textContent='⏹ Stop';btn.classList.add('running');
   slideshowIndex=0;
-  log('Slideshow started — '+library.length+' images');
-  runSlide();
-}
 
-async function runSlide(){
-  if(!slideshowTimer&&slideshowTimer!==0)return; // stopped
-  if(!characteristic){stopSlideshow();return;}
-  const interval=parseInt(document.getElementById('slideInterval').value);
+  // Send first image immediately
   await sendSlide(slideshowIndex);
-  slideshowIndex=(slideshowIndex+1)%library.length;
-  // Only schedule next after current fully finishes
-  slideshowTimer=setTimeout(runSlide,interval);
+
+  // Then set interval for subsequent images
+  // Use a wrapper that awaits each send before scheduling next
+  const runNext=async()=>{
+    if(!slideshowTimer)return; // stopped
+    slideshowIndex=(slideshowIndex+1)%library.length;
+    await sendSlide(slideshowIndex);
+    if(slideshowTimer){
+      slideshowTimer=setTimeout(runNext,interval);
+    }
+  };
+  slideshowTimer=setTimeout(runNext,interval);
 }
 
 function stopSlideshow(){
-  if(slideshowTimer){clearTimeout(slideshowTimer);}
-  slideshowTimer=null;
+  if(slideshowTimer){clearTimeout(slideshowTimer);slideshowTimer=null;}
   isSendingImage=false;
   sendQueue=[];sending=false;
   const btn=document.getElementById('slideBtn');
@@ -664,8 +672,9 @@ function shuffleLibrary(){
   log('Shuffled!');
 }
 
+// ── Init ──────────────────────────────────────────────
 renderHistory();
 renderLibrary();
-function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
-</body>
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}</body>
 </html>
